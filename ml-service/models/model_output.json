@@ -1,0 +1,136 @@
+{
+  "model": {
+    "weights": [
+      -0.059701965679827856,
+      -0.577607277887708,
+      -0.5313383844549693,
+      0.0361498709564701,
+      -0.16542863116117376,
+      -0.09774100044043453,
+      -0.023241993084970075
+    ],
+    "bias": -1.2468708147586105,
+    "n_features": 7,
+    "feature_names": [
+      "is_weekend",
+      "hour_normalized",
+      "tier_weight_normalized",
+      "is_monsoon",
+      "is_holiday",
+      "days_before_normalized",
+      "route_base_rate"
+    ]
+  },
+  "training": {
+    "samples": 2000,
+    "train_accuracy": 0.885,
+    "test_accuracy": 0.8575,
+    "confusion_matrix": {
+      "TP": 0,
+      "FP": 0,
+      "TN": 343,
+      "FN": 57,
+      "precision": 0,
+      "recall": 0.0
+    },
+    "loss_history": [
+      0.3576141280156248,
+      0.35758385463352127,
+      0.35755370465656766,
+      0.35752367731926166,
+      0.35749377186305437,
+      0.35746398753625214,
+      0.3574343235939333,
+      0.3574047792978565,
+      0.357375353916374,
+      0.3573460467243488
+    ]
+  },
+  "overbooking_analysis": {
+    "optimal_level": 14,
+    "minimum_expected_cost": 22266.74,
+    "cost_curve": [
+      {
+        "overbooking_level": 0,
+        "expected_cost": 68400.0
+      },
+      {
+        "overbooking_level": 1,
+        "expected_cost": 64350.0
+      },
+      {
+        "overbooking_level": 2,
+        "expected_cost": 60300.03
+      },
+      {
+        "overbooking_level": 3,
+        "expected_cost": 56250.29
+      },
+      {
+        "overbooking_level": 4,
+        "expected_cost": 52201.71
+      },
+      {
+        "overbooking_level": 5,
+        "expected_cost": 48157.63
+      },
+      {
+        "overbooking_level": 6,
+        "expected_cost": 44127.59
+      },
+      {
+        "overbooking_level": 7,
+        "expected_cost": 40134.31
+      },
+      {
+        "overbooking_level": 8,
+        "expected_cost": 36223.96
+      },
+      {
+        "overbooking_level": 9,
+        "expected_cost": 32478.46
+      },
+      {
+        "overbooking_level": 10,
+        "expected_cost": 29026.02
+      },
+      {
+        "overbooking_level": 11,
+        "expected_cost": 26045.42
+      },
+      {
+        "overbooking_level": 12,
+        "expected_cost": 23759.69
+      },
+      {
+        "overbooking_level": 13,
+        "expected_cost": 22417.85
+      },
+      {
+        "overbooking_level": 14,
+        "expected_cost": 22266.74
+      },
+      {
+        "overbooking_level": 15,
+        "expected_cost": 23519.0
+      }
+    ]
+  },
+  "route_base_rates": {
+    "DEL-BOM": 0.08,
+    "BOM-DEL": 0.09,
+    "BLR-DEL": 0.07,
+    "DEL-BLR": 0.06,
+    "BOM-HYD": 0.1,
+    "HYD-BOM": 0.09,
+    "MAA-CCU": 0.12,
+    "CCU-MAA": 0.11,
+    "HYD-GOI": 0.15,
+    "GOI-HYD": 0.14,
+    "CCU-BLR": 0.08,
+    "BLR-CCU": 0.07,
+    "DEL-GOI": 0.13,
+    "BOM-GOI": 0.11
+  },
+  "exported_at": "2026-09-27T08:18:53.215026"
+}
