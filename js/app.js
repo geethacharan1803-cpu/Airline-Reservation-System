@@ -119,11 +119,9 @@ function renderNavbar() {
         </a>
         <div class="navbar-nav" id="nav-links">
           <a href="#/home" class="nav-link" data-page="home">${icons.home} Home</a>
-          <a href="#/dashboard" class="nav-link" data-page="dashboard">${icons.dashboard} Dashboard</a>
           <a href="#/search" class="nav-link" data-page="search">${icons.search} Flights</a>
           <a href="#/bookings" class="nav-link" data-page="bookings">${icons.ticket} My Bookings</a>
-          <a href="#/admin" class="nav-link" data-page="admin">${icons.settings} Admin</a>
-          <a href="#/academic" class="nav-link" data-page="academic">${icons.book} Academic</a>
+          <a href="#/academic" class="nav-link" data-page="academic">${icons.book} Academics (5 Subjects)</a>
         </div>
         <button class="mobile-menu-btn" id="mobile-menu-btn">${icons.menu}</button>
       </div>
@@ -144,7 +142,7 @@ function renderHomePage() {
         <p>A production-grade booking platform demonstrating DBMS concurrency control, ADSA data structures, discrete mathematics, and ML-driven overbooking optimization.</p>
         <div class="hero-actions">
           <a href="#/search" class="btn btn-primary btn-lg">Search Flights ${icons.search}</a>
-          <a href="#/dashboard" class="btn btn-secondary btn-lg">View Dashboard ${icons.dashboard}</a>
+          <a href="#/academic" class="btn btn-secondary btn-lg">Explore 5 Core Subjects ${icons.book}</a>
         </div>
       </div>
     </section>
@@ -2427,453 +2425,6 @@ window.cancelBookingUI = async (pnr) => {
 };
 
 // ══════════════════════════════════════════════════════════
-//  PAGE: ADMIN PANEL
-// ══════════════════════════════════════════════════════════
-
-async function renderAdminPage() {
-  const flights = await getAll('flights');
-  const bookings = await getAll('bookings');
-  const seats = await getAll('seats');
-  const logs = await getRecentAuditLogs(40);
-  const treeTelemetry = bookingIndex.getTelemetry();
-
-  const confirmedBookings = bookings.filter(b => b.status === 'confirmed');
-  const cancelledBookings = bookings.filter(b => b.status === 'cancelled');
-  const totalConfirmed = confirmedBookings.length;
-  const totalCancelled = cancelledBookings.length;
-  const netRevenue = confirmedBookings.reduce((sum, b) => sum + (b.totalPrice || 0), 0);
-  const totalRefunds = cancelledBookings.reduce((sum, b) => sum + (b.refund?.refundAmount || 0), 0);
-
-  let totalFleetCapacity = 0;
-  let totalFleetBooked = 0;
-  const flightStats = {};
-  flights.forEach(f => {
-    totalFleetCapacity += f.totalSeats;
-    const bookedSeats = seats.filter(s => s.flightId === f.id && s.status === 'booked').length;
-    totalFleetBooked += bookedSeats;
-    const rate = f.totalSeats > 0 ? Math.round((bookedSeats / f.totalSeats) * 100) : 0;
-    flightStats[f.id] = { booked: bookedSeats, rate };
-  });
-  const fleetLoadFactor = totalFleetCapacity > 0 ? ((totalFleetBooked / totalFleetCapacity) * 100).toFixed(1) : '0.0';
-
-  return `
-    <div class="container">
-      <div class="page-header">
-        <h1>Admin Operations & Algorithmic Controls</h1>
-        <p>Live fleet operations, B-Tree index traversal telemetry, overbooking risk gauges, and concurrency audits</p>
-      </div>
-
-      <!-- High-Level Operational Metrics Overview -->
-      <div class="grid grid-4 gap-4 mb-6">
-        <div class="card metric-card">
-          <div class="metric-icon blue">✈️</div>
-          <div class="metric-value">${fleetLoadFactor}%</div>
-          <div class="metric-label">Fleet Load Factor</div>
-          <div class="text-xs text-muted mt-2">${totalFleetBooked} of ${totalFleetCapacity} physical seats occupied</div>
-        </div>
-
-        <div class="card metric-card">
-          <div class="metric-icon green">🌳</div>
-          <div class="metric-value">O(log n)</div>
-          <div class="metric-label">B-Tree Traversal</div>
-          <div class="text-xs text-muted mt-2">Height: ${treeTelemetry.height} | ${treeTelemetry.size} Keys | ${treeTelemetry.nodeCount} Nodes</div>
-        </div>
-
-        <div class="card metric-card">
-          <div class="metric-icon amber">⚖️</div>
-          <div class="metric-value">p=10% | b=₹15k</div>
-          <div class="metric-label">Overbooking Gauges</div>
-          <div class="text-xs text-muted mt-2">Bump/Spoil Ratio: 3.33x | Crit. Ratio: 23.1%</div>
-        </div>
-
-        <div class="card metric-card">
-          <div class="metric-icon purple">🎫</div>
-          <div class="metric-value">${totalConfirmed} / ${totalCancelled}</div>
-          <div class="metric-label">Confirmed vs Cancelled</div>
-          <div class="text-xs text-muted mt-2">Net Bookings: ₹${(netRevenue - totalRefunds).toLocaleString()}</div>
-        </div>
-      </div>
-
-      <div class="tabs mb-0">
-        <button class="tab-btn active" onclick="window.switchAdminTab('flights')">Flights & Load Factors</button>
-        <button class="tab-btn" onclick="window.switchAdminTab('overbooking')">Overbooking Optimization (ML)</button>
-        <button class="tab-btn" onclick="window.switchAdminTab('waitlist')">Standby Waitlist (MaxHeap)</button>
-        <button class="tab-btn" onclick="window.switchAdminTab('stress')">Concurrency Stress Test (DBMS)</button>
-        <button class="tab-btn" onclick="window.switchAdminTab('audit')">Audit Trail (${logs.length})</button>
-      </div>
-
-      <div id="admin-tab-flights" class="tab-content active">
-        <div class="table-wrapper card">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Flight</th>
-                <th>Route</th>
-                <th>Departure</th>
-                <th>Aircraft</th>
-                <th>Live Load Factor</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${flights.map(f => {
-    const stat = flightStats[f.id] || { booked: 0, rate: 0 };
-    const barColor = stat.rate > 85 ? 'var(--color-danger)' : stat.rate > 60 ? 'var(--color-accent)' : 'var(--color-success)';
-    return `
-                  <tr>
-                    <td><strong>${f.flightNumber}</strong></td>
-                    <td>${f.origin} → ${f.destination}</td>
-                    <td>${new Date(f.departureTime).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                    <td class="text-sm">${f.aircraft}</td>
-                    <td style="min-width:180px">
-                      <div class="flex items-center gap-2">
-                        <div style="flex:1;background:var(--color-border);height:8px;border-radius:4px;overflow:hidden">
-                          <div style="width:${stat.rate}%;background:${barColor};height:100%;transition:width 0.4s ease"></div>
-                        </div>
-                        <span class="font-bold text-xs" style="min-width:38px">${stat.rate}%</span>
-                        <span class="text-xs text-muted">(${stat.booked}/${f.totalSeats})</span>
-                      </div>
-                    </td>
-                    <td><span class="badge badge-success badge-dot">${f.status}</span></td>
-                    <td><button class="btn btn-ghost btn-sm" onclick="window.viewFlightAnalysis('${f.id}')">Analyze</button></td>
-                  </tr>
-                `;
-  }).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div id="admin-tab-overbooking" class="tab-content">
-        <div class="card mb-6">
-          <div class="card-header">
-            <div>
-              <h3>Dynamic Overbooking Tuning & Loss Minimization</h3>
-              <p class="text-sm text-muted">Balancing Denied Boarding Cost (b) against Empty Seat Spoilage (s)</p>
-            </div>
-            <span class="badge badge-info">Python/ML Unit</span>
-          </div>
-          <div class="card-body">
-            <div class="p-4 mb-6" style="background:var(--color-bg);border-radius:var(--radius-lg);font-family:var(--font-mono);font-size:var(--font-size-sm);line-height:1.6">
-              <strong>Expected Cost Formula:</strong> E[Cost(k)] = b · ∑ (j - C) · P(X = j) [Over-sale] + s · ∑ (C - j) · P(X = j) [Spoilage]<br>
-              <strong>Critical Ratio:</strong> CR = s / (b + s) = 4,500 / (15,000 + 4,500) = 23.08% | Optimal buffer solves: P(Show ≤ C) ≥ CR
-            </div>
-
-            <div class="form-row mb-6">
-              <div class="form-group">
-                <label class="form-label">Physical Capacity (C)</label>
-                <input class="form-input" id="ob-capacity" type="number" value="152">
-              </div>
-              <div class="form-group">
-                <label class="form-label">No-Show Rate p (%)</label>
-                <input class="form-input" id="ob-noshow" type="number" value="10" min="1" max="40">
-              </div>
-              <div class="form-group">
-                <label class="form-label">Bump Compensation Cost b (₹)</label>
-                <input class="form-input" id="ob-bump" type="number" value="15000">
-              </div>
-              <div class="form-group">
-                <label class="form-label">Spoilage Loss s (₹)</label>
-                <input class="form-input" id="ob-spoil" type="number" value="4500">
-              </div>
-            </div>
-            <button class="btn btn-primary mb-6" onclick="window.runOverbookingAnalysis()">Run Overbooking Optimization</button>
-            <div id="overbooking-results"></div>
-          </div>
-        </div>
-      </div>
-
-      <div id="admin-tab-waitlist" class="tab-content">
-        <div class="card mb-6">
-          <div class="card-header">
-            <div>
-              <h3>Max-Heap Standby Priority Ingestion</h3>
-              <p class="text-sm text-muted">Priority Score = (TierWeight × 100,000) − Timestamp</p>
-            </div>
-            <span class="badge badge-info">ADSA Unit 2</span>
-          </div>
-          <div class="card-body">
-            <div class="form-row mb-4">
-              <div class="form-group">
-                <label class="form-label">Passenger Name</label>
-                <input class="form-input" id="wl-name" placeholder="e.g. Ramesh Kumar">
-              </div>
-              <div class="form-group">
-                <label class="form-label">Frequent Flyer Tier</label>
-                <select class="form-select" id="wl-tier">
-                  <option value="gold">Gold (Weight 4)</option>
-                  <option value="silver">Silver (Weight 3)</option>
-                  <option value="bronze">Bronze (Weight 2)</option>
-                  <option value="basic" selected>Basic (Weight 1)</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Target Flight</label>
-                <select class="form-select" id="wl-flight">
-                  ${flights.map(f => `<option value="${f.id}">${f.flightNumber} (${f.origin}→${f.destination})</option>`).join('')}
-                </select>
-              </div>
-              <div class="form-group" style="align-self:flex-end">
-                <button class="btn btn-primary" onclick="window.addToWaitlistUI()">Enqueue Passenger</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div id="waitlist-display"></div>
-      </div>
-
-      <div id="admin-tab-stress" class="tab-content">
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h3>🔒 20-Thread Concurrency Stress Test</h3>
-              <p class="text-sm text-muted">Pessimistic row locking verification under simultaneous collision</p>
-            </div>
-            <span class="badge badge-danger">DBMS Unit 5</span>
-          </div>
-          <div class="card-body">
-            <p class="mb-4">Simulates 20 concurrent threads simultaneously firing booking transactions on the exact same flight seat to prove zero double-booking occurrences.</p>
-            <div class="form-row mb-6">
-              <div class="form-group">
-                <label class="form-label">Target Flight</label>
-                <select class="form-select" id="stress-flight">
-                  ${flights.map(f => `<option value="${f.id}">${f.flightNumber} (${f.origin}→${f.destination})</option>`).join('')}
-                </select>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Target Seat</label>
-                <input class="form-input" id="stress-seat" value="10A">
-              </div>
-              <div class="form-group" style="align-self:flex-end">
-                <button class="btn btn-danger" id="run-stress-btn" onclick="window.runStressTest()">🚀 Run 20-Thread Race Test</button>
-              </div>
-            </div>
-            <div class="thread-grid mb-4" id="thread-grid">
-              ${Array.from({ length: 20 }, (_, i) => `<div class="thread-cell" id="thread-${i}">T${i + 1}</div>`).join('')}
-            </div>
-            <div id="stress-log" style="max-height:300px;overflow-y:auto;font-family:var(--font-mono);font-size:var(--font-size-xs)"></div>
-          </div>
-        </div>
-      </div>
-
-      <div id="admin-tab-audit" class="tab-content">
-        <div class="card">
-          <div class="card-header flex justify-between items-center">
-            <div>
-              <h3>ACID Transaction Audit Trail & Replay Log</h3>
-              <p class="text-sm text-muted">Append-only audit ledger recording every seat lock, payment confirmation, and refund</p>
-            </div>
-            <div class="flex gap-2">
-              <span class="badge badge-success">Confirmed: ${totalConfirmed}</span>
-              <span class="badge badge-danger">Cancelled: ${totalCancelled}</span>
-            </div>
-          </div>
-          <div class="card-body" style="padding:0">
-            <div class="table-wrapper">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>Timestamp</th>
-                    <th>Action</th>
-                    <th>Entity</th>
-                    <th>Details</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${logs.map(l => `
-                    <tr>
-                      <td class="text-xs text-muted">${new Date(l.timestamp).toLocaleString()}</td>
-                      <td><span class="badge ${l.action.includes('CANCEL') ? 'badge-danger' : l.action.includes('BOOK') ? 'badge-success' : 'badge-primary'}">${l.action}</span></td>
-                      <td class="text-sm"><code>${l.entityType}:${l.entityId?.slice(0, 12) || ''}</code></td>
-                      <td class="text-xs text-muted truncate" style="max-width:320px" title="${JSON.stringify(l.details)}">${JSON.stringify(l.details).slice(0, 80)}</td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-window.switchAdminTab = (tab, btnEl = null) => {
-  document.querySelectorAll('#admin-tab-flights, #admin-tab-booked-seats, #admin-tab-overbooking, #admin-tab-waitlist, #admin-tab-stress, #admin-tab-audit').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tabs .tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById(`admin-tab-${tab}`)?.classList.add('active');
-  const targetBtn = btnEl || (typeof event !== 'undefined' && event?.target?.tagName === 'BUTTON' ? event.target : null);
-  if (targetBtn) targetBtn.classList.add('active');
-
-  if (tab === 'waitlist') refreshWaitlistDisplay();
-};
-
-window.triggerTestCancellation = async (pnr) => {
-  const result = await cancelBooking(pnr);
-  if (result.success) {
-    showToast('Booking Cancelled', `Refund issued: ₹${(result.refund?.refundAmount || 0).toLocaleString()} (${result.refund?.percentage || 100}%)`, 'success');
-    if (result.promoted) {
-      showToast('Waitlist Auto-Promotion! 🎉', `Passenger ${result.promoted.passengerName} (${result.promoted.tier}) auto-promoted from Max-Heap! New PNR: ${result.promoted.pnr}`, 'info');
-    } else {
-      showToast('Seat Released', 'Seat returned to available inventory', 'info');
-    }
-    await navigateTo('admin');
-    window.switchAdminTab('booked-seats');
-  } else {
-    showToast('Cancellation Error', result.error, 'error');
-  }
-};
-
-window.runOverbookingAnalysis = () => {
-  const capacity = parseInt(document.getElementById('ob-capacity').value);
-  const noShowRate = parseInt(document.getElementById('ob-noshow').value) / 100;
-  const bumpCost = parseInt(document.getElementById('ob-bump').value);
-  const spoilLoss = parseInt(document.getElementById('ob-spoil').value);
-
-  const result = findOptimalOverbooking({ capacity, noShowRate, bumpCost, spoilLoss });
-
-  document.getElementById('overbooking-results').innerHTML = `
-    <div class="grid grid-3 gap-4 mb-6">
-      <div class="card metric-card"><div class="metric-icon green">📈</div><div class="metric-value">${result.optimalLevel}</div><div class="metric-label">Optimal Overbook Level</div></div>
-      <div class="card metric-card"><div class="metric-icon blue">💰</div><div class="metric-value">₹${result.minimumExpectedCost.toLocaleString()}</div><div class="metric-label">Min Expected Cost</div></div>
-      <div class="card metric-card"><div class="metric-icon amber">📊</div><div class="metric-value">${(noShowRate * 100).toFixed(0)}%</div><div class="metric-label">No-Show Rate</div></div>
-    </div>
-    <div class="card"><div class="card-header"><h3>Cost Curve: E[Cost] by Overbooking Level</h3></div><div class="card-body">
-      <div style="display:flex;align-items:flex-end;gap:4px;height:200px;padding-top:20px">
-        ${result.costCurve.map((c, i) => {
-    const maxCost = Math.max(...result.costCurve.map(x => x.expectedCost));
-    const heightPct = maxCost > 0 ? (c.expectedCost / maxCost * 100) : 0;
-    const isOptimal = c.overbookingLevel === result.optimalLevel;
-    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
-            <span style="font-size:9px;color:var(--color-text-muted)">₹${(c.expectedCost / 1000).toFixed(0)}k</span>
-            <div style="width:100%;height:${heightPct}%;background:${isOptimal ? 'var(--color-accent)' : 'var(--color-primary-lighter)'};border-radius:4px 4px 0 0;min-height:4px;border:${isOptimal ? '2px solid var(--color-accent-dark)' : 'none'};transition:all 0.3s"></div>
-            <span style="font-size:10px;font-weight:${isOptimal ? '700' : '400'};color:${isOptimal ? 'var(--color-accent-dark)' : 'var(--color-text-muted)'}">+${c.overbookingLevel}</span>
-          </div>`;
-  }).join('')}
-      </div>
-      <div class="text-center text-sm text-muted mt-2">Overbooking Level (additional seats sold beyond capacity)</div>
-    </div></div>
-    <div class="mt-4 p-4" style="background:var(--color-bg);border-radius:var(--radius-lg);font-size:var(--font-size-sm)">
-      <strong>Recommendation:</strong> ${result.recommendation}
-    </div>
-  `;
-};
-
-window.addToWaitlistUI = () => {
-  const name = document.getElementById('wl-name').value.trim();
-  const tier = document.getElementById('wl-tier').value;
-  const flightId = document.getElementById('wl-flight').value;
-  if (!name) { showToast('Error', 'Enter passenger name', 'warning'); return; }
-
-  addToWaitlist({ passengerId: generateId('pax'), passengerName: name, flightId, tier, seatPreference: 'economy' });
-  showToast('Added to Waitlist', `${name} (${tier}) added to waitlist`, 'success');
-  document.getElementById('wl-name').value = '';
-  refreshWaitlistDisplay();
-};
-
-function refreshWaitlistDisplay() {
-  const display = document.getElementById('waitlist-display');
-  if (!display) return;
-  const sorted = waitlistHeap.toSortedArray();
-  if (sorted.length === 0) {
-    display.innerHTML = '<div class="empty-state"><div class="icon">📋</div><h3>Waitlist Empty</h3></div>';
-    return;
-  }
-  display.innerHTML = `
-    <div class="card"><div class="card-header"><h3>Current Waitlist (${sorted.length})</h3></div><div class="card-body" style="padding:0">
-      <div class="table-wrapper"><table class="data-table">
-        <thead><tr><th>#</th><th>Passenger</th><th>Tier</th><th>Flight</th><th>Priority</th></tr></thead>
-        <tbody>${sorted.map((e, i) => `
-          <tr><td>${i + 1}</td><td>${e.passengerName}</td>
-          <td><span class="badge ${e.tier === 'gold' ? 'badge-warning' : e.tier === 'silver' ? 'badge-neutral' : 'badge-info'}">${e.tier}</span></td>
-          <td>${e.flightId}</td><td><code>${e.priority}</code></td></tr>
-        `).join('')}</tbody>
-      </table></div>
-    </div></div>
-  `;
-}
-
-window.runStressTest = async () => {
-  const flightId = document.getElementById('stress-flight').value;
-  const seatNo = document.getElementById('stress-seat').value;
-  const log = document.getElementById('stress-log');
-  const btn = document.getElementById('run-stress-btn');
-  btn.disabled = true;
-  log.innerHTML = '';
-
-  const addLog = (msg, color = 'inherit') => {
-    log.innerHTML += `<div style="color:${color};padding:2px 0">[${new Date().toISOString().split('T')[1].slice(0, 12)}] ${msg}</div>`;
-    log.scrollTop = log.scrollHeight;
-  };
-
-  addLog('🚀 Starting 20-thread concurrency stress test...', 'var(--color-primary)');
-  addLog(`Target: Flight ${flightId}, Seat ${seatNo}`);
-
-  // Reset target seat to available for the test run so 1 thread succeeds and 19 are rejected
-  const targetSeat = await getByIndex('seatInventory', 'flightSeat', [flightId, seatNo]);
-  if (targetSeat) {
-    targetSeat.status = 'available';
-    targetSeat.heldBy = null;
-    targetSeat.session_hold_id = null;
-    targetSeat.heldUntil = null;
-    await put('seatInventory', targetSeat);
-  }
-
-  let successCount = 0;
-  let failCount = 0;
-
-  const threads = Array.from({ length: 20 }, (_, i) => async () => {
-    const threadId = `T${i + 1}`;
-    const cell = document.getElementById(`thread-${i}`);
-    cell.className = 'thread-cell waiting';
-    addLog(`${threadId}: Attempting to book seat ${seatNo}...`);
-
-    await new Promise(r => setTimeout(r, Math.random() * 500));
-
-    const result = await createBooking({
-      flightId,
-      seatNo,
-      passengerId: `stress_pax_${i}`,
-      passengerName: `Stress Test User ${i + 1}`,
-      amount: 4500,
-      paymentMethod: 'test',
-    });
-
-    if (result.success) {
-      cell.className = 'thread-cell acquired';
-      addLog(`${threadId}: ✅ SUCCESS — PNR: ${result.pnr}`, 'var(--color-success)');
-      successCount++;
-    } else {
-      cell.className = 'thread-cell rejected';
-      addLog(`${threadId}: ❌ REJECTED — ${result.error}`, 'var(--color-danger)');
-      failCount++;
-    }
-  });
-
-  await Promise.all(threads.map(t => t()));
-
-  addLog('');
-  addLog(`━━━ RESULTS ━━━`, 'var(--color-primary)');
-  addLog(`✅ Successful bookings: ${successCount}`, 'var(--color-success)');
-  addLog(`❌ Rejected (double-booking prevented): ${failCount}`, 'var(--color-danger)');
-  addLog(`${successCount <= 1 ? '✓ PASS' : '✗ FAIL'}: ${successCount <= 1 ? 'Concurrency control working correctly!' : 'Multiple bookings detected!'}`,
-    successCount <= 1 ? 'var(--color-success)' : 'var(--color-danger)');
-
-  btn.disabled = false;
-};
-
-window.viewFlightAnalysis = async (flightId) => {
-  const flight = await get('flights', flightId);
-  const analysis = analyzeFlightOverbooking(flight);
-  showToast(
-    `${flight.flightNumber} Analysis`,
-    `No-show: ${analysis.noShowPrediction.percentage}, Optimal overbook: +${analysis.optimalLevel}, E[Cost]: ₹${analysis.minimumExpectedCost.toLocaleString()}`,
-    'info'
-  );
-};
-
-// ══════════════════════════════════════════════════════════
 //  ACADEMIC JOURNEY SIMULATION STATE & DATA
 // ══════════════════════════════════════════════════════════
 
@@ -3233,32 +2784,114 @@ const SYLLABUS_KNOWLEDGE_BASE = [
 ];
 
 // ══════════════════════════════════════════════════════════
-//  PAGE: ACADEMIC SHOWCASE
+//  CORE ACADEMICS DATA MODEL: THE 5 ESSENTIAL R23 SUBJECTS
+// ══════════════════════════════════════════════════════════
+
+const CORE_SUBJECTS = {
+  dbms: {
+    key: 'dbms',
+    subject: 'DBMS',
+    name: 'Database Management Systems',
+    units: 'R23 Units 2, 3 & 5',
+    color: '#EF4444',
+    icon: '🗄️',
+    formula: 'CONSTRAINT uk_flight_seat UNIQUE(flight_id, seat_no) | SELECT ... FOR UPDATE',
+    problem: 'Eliminates double-booking race conditions during high-concurrency seat checkout spikes and prevents database update anomalies.',
+    topics: [
+      { id: 'dbms-race', title: 'Dual Concurrent Write Race (UNIQUE Constraint)', unit: 'Unit 2: Relational Integrity Keys' },
+      { id: 'dbms-mutex', title: 'Pessimistic Row Mutex (2PL Lock & TTL)', unit: 'Unit 5: Concurrency Control' },
+      { id: 'dbms-norm', title: '3NF Relational Normalization', unit: 'Unit 3: Normalization' }
+    ],
+    impact: 'Why DBMS Constraints Matter: Without database-level UNIQUE composite keys and pessimistic locks, high-traffic ticket rushes cause duplicate tickets to be issued for the exact same seat, causing gate-side overboarding disputes, seat collisions, and massive civil penalties.'
+  },
+  adsa: {
+    key: 'adsa',
+    subject: 'ADSA',
+    name: 'Advanced Data Structures & Algorithms',
+    units: 'R23 Units 1 & 2',
+    color: '#3B82F6',
+    icon: '🌲',
+    formula: 'T(n) = O(log_t n) | Priority = (TierWeight × 10⁵) - Timestamp',
+    problem: 'Guarantees O(log n) PNR retrieval across millions of tickets and executes instant O(1) waitlist promotion of VIP flyers.',
+    topics: [
+      { id: 'adsa-btree', title: 'Multi-Way Balanced B-Tree (Order t=3)', unit: 'Unit 1: Multi-Way Trees' },
+      { id: 'adsa-heap', title: 'Binary Max-Heap Standby Priority Queue', unit: 'Unit 2: Priority Queues' }
+    ],
+    impact: 'Why ADSA Matters: Linear arrays require O(n) scans, leading to crippling system lag during airport check-ins. Balanced B-Trees ensure instant O(log n) ticket retrieval, while Binary Max-Heaps automate fair, prioritized standby passenger promotions without manual staff tampering.'
+  },
+  dmgt: {
+    key: 'dmgt',
+    subject: 'DMGT',
+    name: 'Discrete Mathematics & Graph Theory',
+    units: 'R23 Units 1, 2, 4–5',
+    color: '#F59E0B',
+    icon: '⚡',
+    formula: 'CanBook = (P ∧ Q) ∧ (R ∨ S) | A = U ∖ (B ∪ H)',
+    problem: 'Validates strict passenger qualification via Boolean circuits and optimizes multi-hop flight layovers via weighted directed graphs.',
+    topics: [
+      { id: 'dmgt-logic', title: 'Propositional Logic Gate Circuit', unit: 'Unit 1: Propositional Calculus' },
+      { id: 'dmgt-set', title: 'Set Theory Inventory & Injective Mappings', unit: 'Unit 2: Set Theory & Relations' },
+      { id: 'dmgt-graph', title: 'Dijkstra Shortest Route Network', unit: 'Unit 4-5: Graph Theory & Shortest Path' }
+    ],
+    impact: 'Why DMGT Matters: Propositional logic formulas prevent invalid bookings when payments fail or seats are exhausted. Set theory mathematically guarantees aircraft capacity bounds, and Dijkstra algorithm re-routes passengers through optimal hubs when direct flights are sold out.'
+  },
+  oopj: {
+    key: 'oopj',
+    subject: 'OOPJ',
+    name: 'Object-Oriented Programming (Java)',
+    units: 'R23 Units 1–4',
+    color: '#10B981',
+    icon: '🧬',
+    formula: 'Person ← Passenger, User | Strategy Pattern: RefundPolicyStrategy',
+    problem: 'Protects passenger domain entities with private encapsulation and decouples dynamic cancellation fees using the Strategy Pattern.',
+    topics: [
+      { id: 'oopj-uml', title: 'UML Domain Hierarchy & Encapsulation', unit: 'Unit 1-2: Classes & Inheritance' },
+      { id: 'oopj-strategy', title: 'Polymorphic Refund Strategy Simulator', unit: 'Unit 3: Design Patterns' },
+      { id: 'oopj-exceptions', title: 'Checked Booking Exception Hierarchy', unit: 'Unit 4: Exception Handling' }
+    ],
+    impact: 'Why OOPJ Matters: Encapsulation with strictly private (#) fields prevents client-side tampering of frequent flyer tiers and balances. Polymorphic Strategy patterns allow the airline to modify refund regulations dynamically without breaking core checkout code.'
+  },
+  python: {
+    key: 'python',
+    subject: 'Python/ML',
+    name: 'Python Applied Machine Learning',
+    units: 'Classification & Optimization',
+    color: '#8B5CF6',
+    icon: '🤖',
+    formula: 'P(no-show) = σ(z) = 1 / (1 + e^-z) | min E[Cost(b)]',
+    problem: 'Replaces risky human guesswork with predictive logistic regression and calculates the mathematically optimal overbooking limit.',
+    topics: [
+      { id: 'python-sigmoid', title: 'Interactive Sigmoid Activation Curve', unit: 'Supervised Logistic Regression' },
+      { id: 'python-overbook', title: 'Binomial Expected Cost Minimization', unit: 'Expected Cost Optimization' }
+    ],
+    impact: 'Why Python ML Matters: Unsold seats are permanently perishable revenue, while overbooking too aggressively causes expensive bump compensations. Our binomial cost optimizer balances bump penalties vs spoilage losses to determine the exact optimal buffer (+b* seats).'
+  }
+};
+
+// ══════════════════════════════════════════════════════════
+//  PAGE: ACADEMIC SHOWCASE (5 CORE SUBJECTS ARCHITECTURE)
 // ══════════════════════════════════════════════════════════
 
 async function renderAcademicPage() {
-  const truthTable = generateBookingTruthTable();
-  const graphProps = getGraphProperties();
-
   return `
     <div class="container">
       <div class="page-header">
-        <h1>Academics & Curricular Architecture</h1>
-        <p>Comprehensive engineering mapping: DBMS, ADSA, DMGT, OOPJ, and Python/Machine Learning</p>
+        <div class="flex items-center gap-2 mb-2">
+          <span class="badge badge-accent">B.Tech II Year I Sem — R23 Curricular Specification</span>
+          <span class="text-xs text-muted font-mono">100% Zero-Build ES6 Native</span>
+        </div>
+        <h1>Core Curricular Architecture & Visual Concept Engine</h1>
+        <p>A rigorous implementation focused strictly on the 5 foundational R23 curriculum subjects: DBMS, ADSA, DMGT, OOPJ, and Python Applied Machine Learning. Click any subject card or topic pill to launch its interactive visual simulation, animated logic diagram, and live backend trace.</p>
       </div>
 
       <!-- SECTION A: COMPREHENSIVE SYSTEM ARCHITECTURE BLUEPRINT -->
       <div class="blueprint-hero mb-8">
         <div class="flex justify-between items-start flex-wrap gap-4 mb-4">
           <div>
-            <span class="badge badge-accent mb-2" style="font-size:0.75rem;letter-spacing:0.05em">B.Tech II Year I Sem — R23 Curricular Blueprint</span>
-            <h2 style="color:#FFFFFF;margin-bottom:6px;font-size:1.75rem">End-to-End System Architecture Pipeline</h2>
-            <p style="color:#CBD5E1;max-width:800px;font-size:0.95rem;line-height:1.5">
+            <h2 style="color:#FFFFFF;margin-bottom:6px;font-size:1.6rem">End-to-End System Architecture Pipeline</h2>
+            <p style="color:#CBD5E1;max-width:850px;font-size:0.95rem;line-height:1.5">
               Every passenger interaction flows through a verified computer science stack — transforming raw browser clicks into discrete logic evaluations, self-balancing B-Tree index lookups, ACID row-level mutex locks, ML probability predictions, and priority queue waitlists.
             </p>
-          </div>
-          <div class="text-right">
-            <span class="badge badge-info" style="font-size:0.8rem">100% Zero-Build ES6 Native</span>
           </div>
         </div>
 
@@ -3307,11 +2940,11 @@ async function renderAcademicPage() {
         </div>
       </div>
 
-<!-- SECTION B: ANIMATED END-TO-END PASSENGER JOURNEY WORKFLOW -->
+      <!-- SECTION B: ANIMATED END-TO-END PASSENGER JOURNEY WORKFLOW -->
       <div class="journey-container mb-8">
         <div class="flex justify-between items-center mb-6 flex-wrap gap-4">
           <div>
-            <h2 style="margin:0 0 4px 0;font-size:1.4rem">Animated Passenger Journey & Execution Terminal</h2>
+            <h2 style="margin:0 0 4px 0;font-size:1.35rem">Animated Passenger Journey & Execution Terminal</h2>
             <p class="text-muted text-sm" style="margin:0">Watch real-time background algorithms execute at every milestone of the booking lifecycle</p>
           </div>
           <div class="flex gap-2">
@@ -3381,536 +3014,1073 @@ async function renderAcademicPage() {
         </div>
       </div>
 
-      <!-- SECTION C: INTERACTIVE CURRICULAR SYLLABUS & FAILURE PREVENTION EXPLORER -->
-      <div class="card p-6 mb-8" style="background:var(--color-surface);border:1.5px solid var(--color-border);border-radius:var(--radius-2xl);box-shadow:var(--shadow-sm)">
-        <div class="flex justify-between items-center mb-6 flex-wrap gap-4">
+      <!-- SECTION C: THE 5 ESSENTIAL CORE SUBJECTS VISUAL EXPLORER -->
+      <div class="mb-4">
+        <div class="flex justify-between items-end flex-wrap gap-4 mb-6">
           <div>
             <div class="flex items-center gap-2 mb-1">
-              <span class="badge badge-primary">Academic Evaluation Suite</span>
-              <span class="text-xs text-muted font-mono">B.Tech II-I • R23 Regulation</span>
+              <span class="badge badge-primary">Curricular Engine</span>
+              <span class="text-xs text-muted font-mono">B.Tech R23 Syllabi</span>
             </div>
-            <h2 style="margin:0 0 4px 0;font-size:1.4rem">Curricular Syllabus Explorer & Failure Prevention Engine</h2>
-            <p class="text-muted text-sm" style="margin:0">Explore how academic computer science concepts directly prevent real-world system failures and concurrency disasters</p>
+            <h2 style="margin:0 0 4px 0;font-size:1.5rem">The 5 Core Curricular Subjects</h2>
+            <p class="text-muted text-sm" style="margin:0">Click any card or topic badge to launch the interactive animated simulation, dynamic circuit/graph, and live backend trace terminal</p>
           </div>
         </div>
 
-        <!-- Search Box & Filter Pills -->
-        <div class="syllabus-search-container mb-6">
-          <div class="relative mb-4">
-            <span class="syllabus-search-icon">🔍</span>
-            <input 
-              type="text" 
-              class="form-input syllabus-search-input" 
-              id="syllabus-search-input" 
-              placeholder="Search subject or concept (e.g., DBMS, ADSA, B-Tree, Normalization, Logic Gates)..."
-              oninput="window.handleSyllabusSearch(this.value)"
-              autocomplete="off"
-            >
-          </div>
-
-          <div class="syllabus-filter-bar">
-            <button class="syllabus-filter-pill active" onclick="window.filterSyllabusBySubject('ALL', this)">All Concepts (12)</button>
-            <button class="syllabus-filter-pill" onclick="window.filterSyllabusBySubject('DBMS', this)">DBMS (3)</button>
-            <button class="syllabus-filter-pill" onclick="window.filterSyllabusBySubject('ADSA', this)">ADSA (2)</button>
-            <button class="syllabus-filter-pill" onclick="window.filterSyllabusBySubject('DMGT', this)">DMGT (3)</button>
-            <button class="syllabus-filter-pill" onclick="window.filterSyllabusBySubject('OOPJ', this)">OOPJ (2)</button>
-            <button class="syllabus-filter-pill" onclick="window.filterSyllabusBySubject('Python/ML', this)">Python/ML (2)</button>
-          </div>
-        </div>
-
-        <!-- Dynamic Results Counter -->
-        <div class="flex justify-between items-center mb-4 text-xs text-muted" id="syllabus-search-telemetry">
-          <span>Showing <strong id="syllabus-count-display">12</strong> concepts mapped to project source files</span>
-          <span>Click any card or search to inspect implementation</span>
-        </div>
-
-        <!-- Dynamic Cards Grid -->
-        <div class="syllabus-grid" id="syllabus-cards-container">
-          <!-- Populated dynamically by window.renderSyllabusCards() -->
-        </div>
-      </div>
-
-      <!-- SECTION C: INTERACTIVE CURRICULAR WORKBENCHES -->
-      <div class="page-header" style="margin-top:var(--space-8)">
-        <h2>Interactive Curricular Workbenches & Laboratories</h2>
-        <p>Live test-benches enabling interactive experimentation with each unit's underlying mathematics</p>
-      </div>
-
-      <div class="tabs mb-0">
-        <button class="tab-btn active" onclick="window.switchAcadTab('logic')">Logic Gates (DMGT Unit 1)</button>
-        <button class="tab-btn" onclick="window.switchAcadTab('sets')">Set Theory (DMGT Unit 2)</button>
-        <button class="tab-btn" onclick="window.switchAcadTab('graph')">Route Graph (DMGT Unit 4-5)</button>
-        <button class="tab-btn" onclick="window.switchAcadTab('btree')">B-Tree Lab (ADSA Unit 1)</button>
-        <button class="tab-btn" onclick="window.switchAcadTab('heap')">MaxHeap Lab (ADSA Unit 2)</button>
-        <button class="tab-btn" onclick="window.switchAcadTab('oop')">OOP & Refunds (OOPJ)</button>
-      </div>
-
-      <!-- Logic Gates Tab -->
-      <div id="acad-tab-logic" class="tab-content active">
-        <div class="card mb-6">
-          <div class="card-header"><h3>Propositional Logic: Checkout Validation</h3><span class="badge badge-info">DMGT Unit 1</span></div>
-          <div class="card-body">
-            <div class="p-4 mb-6" style="background:var(--color-bg);border-radius:var(--radius-lg);font-family:var(--font-mono);font-size:var(--font-size-lg);text-align:center">
-              CanBook = (P ∧ Q) ∧ (R ∨ S)
-            </div>
-            <div class="grid grid-2 gap-6 mb-6">
-              <div>
-                <h4 class="mb-3">Variable Definitions</h4>
-                <div class="text-sm"><strong>P</strong> = ValidIdentity (passenger has valid ID)</div>
-                <div class="text-sm"><strong>Q</strong> = PaymentCleared (payment processed)</div>
-                <div class="text-sm"><strong>R</strong> = SeatAvailable (physical seat available)</div>
-                <div class="text-sm"><strong>S</strong> = OverbookAllowed (overbooking permitted)</div>
+        <!-- 5 SUBJECTS CARD GRID -->
+        <div class="core-subjects-grid">
+          ${Object.values(CORE_SUBJECTS).map(sub => `
+            <div class="core-subject-card" style="--subject-accent:${sub.color}">
+              <div class="core-subject-header">
+                <span class="core-subject-badge" style="background:${sub.color}20;color:${sub.color};border:1px solid ${sub.color}40">${sub.icon} ${sub.subject}</span>
+                <span class="core-subject-units">${sub.units}</span>
               </div>
-              <div>
-                <h4 class="mb-3">Interactive Evaluator</h4>
-                <div class="flex flex-col gap-2 mb-4">
-                  <label class="form-check"><input type="checkbox" id="gate-P" checked onchange="window.evalGates()"> P — Valid Identity</label>
-                  <label class="form-check"><input type="checkbox" id="gate-Q" onchange="window.evalGates()"> Q — Payment Cleared</label>
-                  <label class="form-check"><input type="checkbox" id="gate-R" checked onchange="window.evalGates()"> R — Seat Available</label>
-                  <label class="form-check"><input type="checkbox" id="gate-S" onchange="window.evalGates()"> S — Overbook Allowed</label>
-                </div>
-                <div id="gate-result" class="p-4" style="border-radius:var(--radius-lg);font-weight:700"></div>
+              <div class="core-subject-title">${sub.name}</div>
+              <div class="core-subject-problem">${sub.problem}</div>
+              <div class="core-subject-formula">${sub.formula}</div>
+              
+              <div class="core-subject-topics-list">
+                ${sub.topics.map(t => `
+                  <button class="core-subject-topic-pill" onclick="window.openConceptModal('${sub.key}', '${t.id}')">
+                    📌 ${t.title.split('(')[0].trim()}
+                  </button>
+                `).join('')}
               </div>
+
+              <button class="core-subject-launch-btn" onclick="window.openConceptModal('${sub.key}')">
+                <span>Launch Interactive Simulation</span>
+                <span>⚡</span>
+              </button>
             </div>
-            <h4 class="mb-3">Complete Truth Table (2⁴ = 16 rows)</h4>
-            <div class="table-wrapper"><table class="data-table truth-table">
-              <thead><tr>${truthTable.headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
-              <tbody>
-                ${truthTable.rows.map(row => `<tr>${row.values.map(v => `<td class="${v ? 'true' : 'false'}">${v ? 'T' : 'F'}</td>`).join('')}</tr>`).join('')}
-              </tbody>
-            </table></div>
-          </div>
+          `).join('')}
         </div>
       </div>
 
-      <!-- Set Theory Tab -->
-      <div id="acad-tab-sets" class="tab-content">
-        <div class="card">
-          <div class="card-header"><h3>Set Theory: Seat Availability</h3><span class="badge badge-info">DMGT Unit 2</span></div>
-          <div class="card-body" id="sets-demo-content">
-            <p class="mb-4">Select a flight to see set operations on its seat inventory.</p>
-            <select class="form-select mb-4" id="sets-flight" onchange="window.loadSetDemo(this.value)">
-              <option value="">Select a flight...</option>
-            </select>
-            <div id="sets-results"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Route Graph Tab -->
-      <div id="acad-tab-graph" class="tab-content">
-        <div class="card mb-6">
-          <div class="card-header"><h3>Airport Route Network</h3><span class="badge badge-info">DMGT Unit 4-5</span></div>
-          <div class="card-body">
-            <div class="grid grid-3 gap-4 mb-6">
-              <div class="card metric-card"><div class="metric-value">${graphProps.nodeCount}</div><div class="metric-label">Airports (Vertices)</div></div>
-              <div class="card metric-card"><div class="metric-value">${graphProps.edgeCount}</div><div class="metric-label">Routes (Edges)</div></div>
-              <div class="card metric-card"><div class="metric-value">Directed</div><div class="metric-label">Graph Type</div></div>
-            </div>
-            <h4 class="mb-3">Dijkstra's Shortest Path</h4>
-            <div class="form-row mb-4">
-              <div class="form-group"><label class="form-label">Origin</label>
-                <select class="form-select" id="dijkstra-from">${graphProps.nodes.map(n => `<option value="${n.code}">${n.code} — ${n.city}</option>`).join('')}</select>
-              </div>
-              <div class="form-group"><label class="form-label">Destination</label>
-                <select class="form-select" id="dijkstra-to">${graphProps.nodes.map(n => `<option value="${n.code}" ${n.code === 'GOI' ? 'selected' : ''}>${n.code} — ${n.city}</option>`).join('')}</select>
-              </div>
-              <div class="form-group" style="align-self:flex-end"><button class="btn btn-primary" onclick="window.runDijkstra()">Find Path</button></div>
-            </div>
-            <div id="dijkstra-result"></div>
-            <h4 class="mb-3 mt-6">Node Degrees</h4>
-            <div class="table-wrapper"><table class="data-table">
-              <thead><tr><th>Airport</th><th>City</th><th>In-Degree</th><th>Out-Degree</th><th>Total</th></tr></thead>
-              <tbody>${graphProps.nodes.map(n => {
-    const d = graphProps.degrees[n.code];
-    return `<tr><td><strong>${n.code}</strong></td><td>${n.city}</td><td>${d.in}</td><td>${d.out}</td><td><strong>${d.total}</strong></td></tr>`;
-  }).join('')}</tbody>
-            </table></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- B-Tree Tab -->
-      <div id="acad-tab-btree" class="tab-content">
-        <div class="card">
-          <div class="card-header"><h3>B-Tree Interactive Demo</h3><span class="badge badge-info">ADSA Unit 1</span></div>
-          <div class="card-body">
-            <div class="form-row mb-4">
-              <div class="form-group"><label class="form-label">Insert Key</label><input class="form-input" id="btree-key" placeholder="e.g., ABC123"></div>
-              <div class="form-group" style="align-self:flex-end"><button class="btn btn-primary" onclick="window.btreeInsert()">Insert</button></div>
-              <div class="form-group"><label class="form-label">Search Key</label><input class="form-input" id="btree-search" placeholder="e.g., ABC123"></div>
-              <div class="form-group" style="align-self:flex-end"><button class="btn btn-secondary" onclick="window.btreeSearch()">Search</button></div>
-            </div>
-            <div id="btree-demo-viz" class="mb-4" style="min-height:150px;background:var(--color-bg);border-radius:var(--radius-lg);padding:var(--space-4);overflow-x:auto"></div>
-            <div id="btree-demo-telemetry" class="grid grid-3 gap-4"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- MaxHeap Tab -->
-      <div id="acad-tab-heap" class="tab-content">
-        <div class="card">
-          <div class="card-header"><h3>MaxHeap Priority Queue Demo</h3><span class="badge badge-info">ADSA Unit 2</span></div>
-          <div class="card-body">
-            <p class="mb-4">Score = (TierWeight × 100,000) − Timestamp</p>
-            <div class="form-row mb-4">
-              <div class="form-group"><label class="form-label">Passenger</label><input class="form-input" id="heap-name" placeholder="Name"></div>
-              <div class="form-group"><label class="form-label">Tier</label>
-                <select class="form-select" id="heap-tier"><option value="gold">Gold (4)</option><option value="silver">Silver (3)</option><option value="bronze">Bronze (2)</option><option value="basic" selected>Basic (1)</option></select>
-              </div>
-              <div class="form-group" style="align-self:flex-end"><button class="btn btn-primary" onclick="window.heapInsert()">Insert</button></div>
-              <div class="form-group" style="align-self:flex-end"><button class="btn btn-accent" onclick="window.heapExtract()">ExtractMax</button></div>
-            </div>
-            <div id="heap-demo-viz" class="mb-4" style="min-height:150px;background:var(--color-bg);border-radius:var(--radius-lg);padding:var(--space-4)"></div>
-            <div id="heap-demo-telemetry" class="grid grid-3 gap-4"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- OOP Tab -->
-      <div id="acad-tab-oop" class="tab-content">
-        <div class="card">
-          <div class="card-header"><h3>Object-Oriented Design</h3><span class="badge badge-info">OOPJ Units 1-4</span></div>
-          <div class="card-body">
-            <h4 class="mb-3">Class Hierarchy</h4>
-            <pre style="font-size:var(--font-size-sm);line-height:1.6">
-  Person (Abstract)
-  ├── Passenger
-  │   ├── #firstName, #lastName, #email, #phone (Encapsulation)
-  │   ├── #tier: gold | silver | bronze | basic
-  │   ├── getTierWeight(): number
-  │   └── toRecord(): Object
-  └── User
-      ├── #role: customer | admin
-      ├── isAdmin(): boolean
-      └── recordLogin(): void
-
-  RefundPolicyStrategy (Abstract — Strategy Pattern)
-  ├── FullRefundPolicy      → 100% always
-  ├── TieredRefundPolicy    → 95% (72h+), 75% (24-72h), 50% (4-24h), 0% (<4h)
-  └── NonRefundablePolicy   → 0% always
-
-  Exception Hierarchy (OOPJ Unit 4)
-  BookingException
-  ├── SeatUnavailableError
-  ├── DoubleBookingError
-  ├── LockTimeoutError
-  ├── ValidationError
-  ├── PaymentError
-  └── CapacityExceededError</pre>
-            <h4 class="mb-3 mt-6">Refund Policy Demo (Strategy Pattern)</h4>
-            <div class="form-row mb-4">
-              <div class="form-group"><label class="form-label">Fare Amount (₹)</label><input class="form-input" id="refund-amount" type="number" value="5000"></div>
-              <div class="form-group"><label class="form-label">Hours Before Departure</label><input class="form-input" id="refund-hours" type="number" value="48"></div>
-              <div class="form-group"><label class="form-label">Policy</label>
-                <select class="form-select" id="refund-policy"><option value="tiered">Tiered</option><option value="full">Full Refund</option><option value="nonrefundable">Non-Refundable</option></select>
-              </div>
-              <div class="form-group" style="align-self:flex-end"><button class="btn btn-primary" onclick="window.calcRefund()">Calculate</button></div>
-            </div>
-            <div id="refund-result"></div>
-          </div>
-        </div>
-      </div>
+      <!-- INTERACTIVE CONCEPT MODAL MOUNT POINT -->
+      <div id="concept-modal-mount"></div>
     </div>
   `;
 }
 
 function initAcademicPage() {
-  // Load flights for set theory demo
-  getAll('flights').then(flights => {
-    const select = document.getElementById('sets-flight');
-    if (select) {
-      flights.forEach(f => {
-        const opt = document.createElement('option');
-        opt.value = f.id;
-        opt.textContent = `${f.flightNumber} (${f.origin}→${f.destination})`;
-        select.appendChild(opt);
-      });
+  // Initialize journey simulation to step 1
+  window.setAcademicJourneyStep(1);
+
+  // Close modal on Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      window.closeConceptModal();
     }
   });
-
-  // Initialize interactive evaluator
-  window.evalGates();
-  updateBTreeDemoViz();
-  updateHeapDemoViz();
-
-  // Initialize Curricular Syllabus Explorer
-  window.renderSyllabusCards(SYLLABUS_KNOWLEDGE_BASE);
 }
 
 // ══════════════════════════════════════════════════════════
-//  SYLLABUS SEARCH & FILTER ENGINE
+//  INTERACTIVE CONCEPT MODAL & VISUAL SIMULATION ENGINE
 // ══════════════════════════════════════════════════════════
 
-let currentSyllabusSubject = 'ALL';
+window.currentModalSubject = null;
+window.currentModalTab = null;
 
-window.renderSyllabusCards = (cards) => {
-  const container = document.getElementById('syllabus-cards-container');
-  const countDisplay = document.getElementById('syllabus-count-display');
-  if (!container) return;
-  if (countDisplay) countDisplay.textContent = cards.length;
+window.openConceptModal = (subjectKey, tabKey = null) => {
+  const subject = CORE_SUBJECTS[subjectKey];
+  if (!subject) return;
 
-  if (!cards || cards.length === 0) {
-    container.innerHTML = `
-      <div class="card p-8 text-center" style="grid-column: 1 / -1; background: var(--color-bg); border-radius: var(--radius-xl);">
-        <div style="font-size:2.5rem;margin-bottom:8px">🔍</div>
-        <div style="font-weight:700;font-size:1.1rem;color:var(--color-text);margin-bottom:4px">No Curricular Concepts Found</div>
-        <div style="font-size:var(--font-size-sm);color:var(--color-text-secondary);max-width:450px;margin:0 auto 16px auto">
-          No matches found for your search query. Try searching for "DBMS", "B-Tree", "Lock", "Dijkstra", "Normalization", or "Max-Heap".
+  window.currentModalSubject = subjectKey;
+  window.currentModalTab = tabKey || subject.topics[0].id;
+
+  const mount = document.getElementById('concept-modal-mount');
+  if (!mount) return;
+
+  mount.innerHTML = `
+    <div class="concept-modal-backdrop" id="concept-modal-backdrop" onclick="if(event.target===this) window.closeConceptModal()">
+      <div class="concept-modal-dialog">
+        <!-- Modal Header -->
+        <div class="concept-modal-header">
+          <div class="concept-modal-title-group">
+            <span class="concept-modal-icon">${subject.icon}</span>
+            <div>
+              <h3 class="concept-modal-title">${subject.name}</h3>
+              <div class="concept-modal-subtitle">${subject.units} • R23 Curricular Specification</div>
+            </div>
+          </div>
+          <button class="concept-modal-close" onclick="window.closeConceptModal()" title="Close dialog">✕</button>
         </div>
-        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('syllabus-search-input').value=''; window.filterSyllabusBySubject('ALL', document.querySelector('.syllabus-filter-pill'))">Reset Search & Filters</button>
+
+        <!-- Modal Tabs -->
+        <div class="concept-modal-tabs">
+          ${subject.topics.map(t => `
+            <button 
+              class="concept-modal-tab-btn ${t.id === window.currentModalTab ? 'active' : ''}" 
+              onclick="window.switchConceptModalTab('${t.id}')">
+              ${t.title}
+            </button>
+          `).join('')}
+        </div>
+
+        <!-- Modal Body -->
+        <div class="concept-modal-body" id="concept-modal-body">
+          ${renderConceptModalContent(subjectKey, window.currentModalTab)}
+        </div>
       </div>
-    `;
+    </div>
+  `;
+
+  // Prevent body scrolling while modal is open
+  document.body.style.overflow = 'hidden';
+
+  // Initialize specific tab interactive graphics
+  initConceptTabInteractive(window.currentModalTab);
+};
+
+window.closeConceptModal = () => {
+  const backdrop = document.getElementById('concept-modal-backdrop');
+  if (backdrop) {
+    backdrop.style.opacity = '0';
+    setTimeout(() => {
+      const mount = document.getElementById('concept-modal-mount');
+      if (mount) mount.innerHTML = '';
+      document.body.style.overflow = '';
+    }, 200);
+  }
+};
+
+window.switchConceptModalTab = (tabKey) => {
+  window.currentModalTab = tabKey;
+  document.querySelectorAll('.concept-modal-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.textContent.includes(tabKey) || btn.onclick.toString().includes(tabKey));
+  });
+  const body = document.getElementById('concept-modal-body');
+  if (body && window.currentModalSubject) {
+    body.innerHTML = renderConceptModalContent(window.currentModalSubject, tabKey);
+    initConceptTabInteractive(tabKey);
+  }
+};
+
+function renderConceptModalContent(subjectKey, tabKey) {
+  const subject = CORE_SUBJECTS[subjectKey];
+  const topic = subject.topics.find(t => t.id === tabKey) || subject.topics[0];
+
+  let graphicHtml = '';
+  let terminalHtml = '';
+
+  switch (tabKey) {
+    // ── DBMS TOPICS ──────────────────────────────────────────
+    case 'dbms-race':
+      graphicHtml = `
+        <div class="dual-write-simulation">
+          <div class="flex justify-between items-center mb-2">
+            <div><strong>Dual Concurrent Write Attempt</strong>: Target Flight <code>AI-204</code>, Seat <code>14A</code></div>
+            <button class="btn btn-primary btn-sm" id="btn-run-race" onclick="window.runDualTransactionRace()">▶ Run Dual Write Race</button>
+          </div>
+          <div class="dual-write-lanes">
+            <div class="write-client-box" id="pax-client-a">
+              <div style="font-size:1.5rem">👤</div>
+              <div style="font-weight:700">Passenger A (Tx 101)</div>
+              <div class="text-xs text-muted">Arrival: t = 0.012s</div>
+              <div class="badge badge-info mt-2" id="status-badge-a">Submitting POST /bookings</div>
+            </div>
+
+            <div class="db-lock-gate">
+              <div style="font-size:1.5rem">🔒</div>
+              <div style="font-weight:800;font-size:11px;letter-spacing:0.05em">DATABASE ENGINE</div>
+              <div style="font-size:10px;font-family:var(--font-mono);margin-top:2px">UNIQUE(flight_id, seat_no)</div>
+            </div>
+
+            <div class="write-client-box" id="pax-client-b">
+              <div style="font-size:1.5rem">👤</div>
+              <div style="font-weight:700">Passenger B (Tx 102)</div>
+              <div class="text-xs text-muted">Arrival: t = 0.014s</div>
+              <div class="badge badge-info mt-2" id="status-badge-b">Submitting POST /bookings</div>
+            </div>
+          </div>
+        </div>
+      `;
+      terminalHtml = `
+[00:00.000] [SYSTEM] Ready to simulate dual concurrent write collision on Seat 14A.
+[00:00.000] Click "▶ Run Dual Write Race" to dispatch simultaneous transactions.
+      `;
+      break;
+
+    case 'dbms-mutex':
+      graphicHtml = `
+        <div style="width:100%">
+          <div class="flex justify-between items-center mb-3">
+            <div><strong>20-Thread Pessimistic Mutex Race</strong>: Simultaneous checkout against Seat <code>12B</code></div>
+            <button class="btn btn-danger btn-sm" id="btn-stress-modal" onclick="window.runConcurrencyStressModal()">⚡ Launch 20 Threads</button>
+          </div>
+          <div class="grid grid-4 gap-2 mb-3" id="stress-threads-grid">
+            ${Array.from({length: 20}, (_, i) => `
+              <div id="modal-thread-${i}" class="p-2 text-center text-xs" style="background:#F1F5F9;border:1px solid #CBD5E1;border-radius:var(--radius-md);font-family:var(--font-mono)">
+                Thread-${i+1}: IDLE
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+      terminalHtml = `
+[00:00.000] [DBMS::MUTEX] Concurrency engine initialized with 20 parallel worker threads.
+[00:00.000] Target: Flight 101, Seat 12B with 10-minute hold TTL.
+      `;
+      break;
+
+    case 'dbms-norm':
+      graphicHtml = `
+        <div style="width:100%">
+          <div class="text-sm mb-3"><strong>3NF Relational Decomposition</strong>: Eliminates insertion, update, and deletion anomalies</div>
+          <div class="grid grid-2 gap-3" style="font-size:11px;font-family:var(--font-mono)">
+            <div class="p-3" style="background:white;border:1.5px solid var(--color-border);border-radius:var(--radius-lg)">
+              <div class="font-bold text-primary mb-1">TABLE: Flights (PK: id)</div>
+              <div class="text-xs text-muted">id | flight_number | origin | destination | equipment | fare</div>
+            </div>
+            <div class="p-3" style="background:white;border:1.5px solid var(--color-border);border-radius:var(--radius-lg)">
+              <div class="font-bold text-primary mb-1">TABLE: Seats (Composite PK: flight_id, seat_no)</div>
+              <div class="text-xs text-muted">flight_id (FK) | seat_no | class | status | session_hold_id</div>
+            </div>
+            <div class="p-3" style="background:white;border:1.5px solid var(--color-border);border-radius:var(--radius-lg)">
+              <div class="font-bold text-primary mb-1">TABLE: Passengers (PK: id)</div>
+              <div class="text-xs text-muted">id | first_name | last_name | id_type | id_number | tier</div>
+            </div>
+            <div class="p-3" style="background:white;border:1.5px solid var(--color-border);border-radius:var(--radius-lg)">
+              <div class="font-bold text-primary mb-1">TABLE: Bookings (PK: pnr)</div>
+              <div class="text-xs text-muted">pnr | flight_id (FK) | seat_no (FK) | passenger_id (FK) | status</div>
+            </div>
+          </div>
+        </div>
+      `;
+      terminalHtml = `
+[00:00.000] [DBMS::3NF] Normalized schema verified: All non-key attributes are fully functionally dependent on Candidate Keys.
+[00:00.000] No transitive functional dependencies X -> Y -> Z exist. Update anomalies eliminated.
+      `;
+      break;
+
+    // ── ADSA TOPICS ──────────────────────────────────────────
+    case 'adsa-btree':
+      graphicHtml = `
+        <div style="width:100%">
+          <div class="form-row mb-3">
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Search PNR Key</label>
+              <div class="flex gap-2">
+                <input class="form-input form-input-sm" id="modal-btree-search-key" value="HYD-204" placeholder="e.g., HYD-204">
+                <button class="btn btn-secondary btn-sm" onclick="window.runBTreeSearchModal()">Search O(log n)</button>
+              </div>
+            </div>
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Insert New PNR</label>
+              <div class="flex gap-2">
+                <input class="form-input form-input-sm" id="modal-btree-insert-key" placeholder="e.g., GOI-505">
+                <button class="btn btn-primary btn-sm" onclick="window.runBTreeInsertModal()">Insert & Split</button>
+              </div>
+            </div>
+          </div>
+          <div id="modal-btree-canvas" style="min-height:140px;background:#0F172A;border-radius:var(--radius-lg);padding:var(--space-3);display:flex;align-items:center;justify-content:center;overflow-x:auto">
+            <!-- Dynamic SVG Tree -->
+          </div>
+        </div>
+      `;
+      terminalHtml = `
+[00:00.000] [ADSA::B-TREE] Initialized In-Memory Multi-Way Balanced B-Tree with order m=3 (Minimum degree t=2).
+[00:00.000] Ready for O(log_m n) key search and insertion operations.
+      `;
+      break;
+
+    case 'adsa-heap':
+      graphicHtml = `
+        <div style="width:100%">
+          <div class="form-row mb-3">
+            <div class="form-group" style="flex:2">
+              <label class="form-label">Passenger Name</label>
+              <input class="form-input form-input-sm" id="modal-heap-name" value="Vikramaditya S." placeholder="Name">
+            </div>
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Frequent Flyer Tier</label>
+              <select class="form-select form-select-sm" id="modal-heap-tier">
+                <option value="gold" selected>Gold (Weight: 4)</option>
+                <option value="silver">Silver (Weight: 3)</option>
+                <option value="bronze">Bronze (Weight: 2)</option>
+                <option value="basic">Basic (Weight: 1)</option>
+              </select>
+            </div>
+            <div class="form-group" style="align-self:flex-end">
+              <button class="btn btn-primary btn-sm" onclick="window.runHeapInsertModal()">Insert Standby</button>
+              <button class="btn btn-accent btn-sm" onclick="window.runHeapExtractModal()">ExtractMax (Promote)</button>
+            </div>
+          </div>
+          <div id="modal-heap-display" style="min-height:120px;background:#0F172A;border-radius:var(--radius-lg);padding:var(--space-3);display:flex;align-items:center;justify-content:center">
+            <!-- Dynamic Heap Visualizer -->
+          </div>
+        </div>
+      `;
+      terminalHtml = `
+[00:00.000] [ADSA::MAX-HEAP] Priority Queue initialized for standby passenger promotion.
+[00:00.000] Priority Function: P = (TierWeight × 100,000) - Timestamp. Gold flyers take absolute precedence.
+      `;
+      break;
+
+    // ── DMGT TOPICS ──────────────────────────────────────────
+    case 'dmgt-logic':
+      graphicHtml = `
+        <div class="logic-circuit-board">
+          <div class="flex justify-between items-center">
+            <div><strong>Boolean Logic Formula</strong>: <code>CanBook = (P ∧ Q) ∧ (R ∨ S)</code></div>
+            <div id="logic-gate-eval-badge" class="badge badge-success font-bold">✓ EVALUATION: TRUE</div>
+          </div>
+          
+          <div class="logic-switches-grid">
+            <div class="logic-switch-card on" id="sw-P" onclick="window.toggleLogicGateModal('P')">
+              <div style="font-weight:700">P: Identity Valid</div>
+              <div class="text-xs text-muted">Aadhaar/Passport</div>
+              <div class="badge badge-success mt-1" id="val-P">TRUE (1)</div>
+            </div>
+            <div class="logic-switch-card on" id="sw-Q" onclick="window.toggleLogicGateModal('Q')">
+              <div style="font-weight:700">Q: Payment Cleared</div>
+              <div class="text-xs text-muted">UPI/Card Auth</div>
+              <div class="badge badge-success mt-1" id="val-Q">TRUE (1)</div>
+            </div>
+            <div class="logic-switch-card on" id="sw-R" onclick="window.toggleLogicGateModal('R')">
+              <div style="font-weight:700">R: Seat Available</div>
+              <div class="text-xs text-muted">Physical Seat Free</div>
+              <div class="badge badge-success mt-1" id="val-R">TRUE (1)</div>
+            </div>
+            <div class="logic-switch-card off" id="sw-S" onclick="window.toggleLogicGateModal('S')">
+              <div style="font-weight:700">S: Overbook Allowed</div>
+              <div class="text-xs text-muted">Capacity Buffer</div>
+              <div class="badge badge-secondary mt-1" id="val-S">FALSE (0)</div>
+            </div>
+          </div>
+
+          <div class="logic-circuit-svg-wrap" id="logic-circuit-svg">
+            <!-- Dynamic SVG Circuit Rendered Here -->
+          </div>
+        </div>
+      `;
+      terminalHtml = `
+[00:00.000] [DMGT::LOGIC] Evaluating Propositional Logic Gate Circuit:
+[00:00.000] Current state: P=1, Q=1, R=1, S=0 ➔ (1 ∧ 1) ∧ (1 ∨ 0) = 1 ∧ 1 = 1 (TRUE).
+      `;
+      break;
+
+    case 'dmgt-set':
+      graphicHtml = `
+        <div style="width:100%">
+          <div class="text-sm mb-3"><strong>Set Theory Inventory Partition</strong>: <code>A = U ∖ (B ∪ H)</code></div>
+          <div class="grid grid-4 gap-3 text-center mb-3">
+            <div class="p-3" style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:var(--radius-lg)">
+              <div class="text-xs text-muted">Universal Set U</div>
+              <div class="font-bold text-lg">180 Seats</div>
+              <div class="text-xs text-muted">Total Aircraft Capacity</div>
+            </div>
+            <div class="p-3" style="background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--radius-lg)">
+              <div class="text-xs text-danger font-semibold">Booked Set B</div>
+              <div class="font-bold text-lg text-danger">130 Seats</div>
+              <div class="text-xs text-muted">Confirmed Reservations</div>
+            </div>
+            <div class="p-3" style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:var(--radius-lg)">
+              <div class="text-xs text-warning font-semibold">Held Set H</div>
+              <div class="font-bold text-lg" style="color:#D97706">8 Seats</div>
+              <div class="text-xs text-muted">Active Checkout TTLs</div>
+            </div>
+            <div class="p-3" style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:var(--radius-lg)">
+              <div class="text-xs text-success font-semibold">Available Set A</div>
+              <div class="font-bold text-lg text-success">42 Seats</div>
+              <div class="text-xs text-muted">A = U ∖ (B ∪ H)</div>
+            </div>
+          </div>
+          <div class="p-3 text-xs" style="background:#0F172A;color:#38BDF8;border-radius:var(--radius-md);font-family:var(--font-mono)">
+            Injective Mapping Proof: f: Passenger ➔ Seat is strictly injective (one-to-one). ∀ p1, p2 ∈ Passengers: f(p1) = f(p2) ⇒ p1 = p2. By Pigeonhole Principle, double allocation is impossible while |B| ≤ |U|.
+          </div>
+        </div>
+      `;
+      terminalHtml = `
+[00:00.000] [DMGT::SET] Seat inventory evaluated across sets U, B, H.
+[00:00.000] |U| = 180, |B| = 130, |H| = 8 ➔ |A| = 180 - (130 + 8) = 42 available seats.
+      `;
+      break;
+
+    case 'dmgt-graph':
+      graphicHtml = `
+        <div style="width:100%">
+          <div class="form-row mb-3">
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Origin Airport</label>
+              <select class="form-select form-select-sm" id="modal-dijkstra-from">
+                <option value="HYD" selected>HYD (Hyderabad)</option>
+                <option value="DEL">DEL (Delhi)</option>
+                <option value="BOM">BOM (Mumbai)</option>
+                <option value="VTZ">VTZ (Visakhapatnam)</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Destination Airport</label>
+              <select class="form-select form-select-sm" id="modal-dijkstra-to">
+                <option value="GOI" selected>GOI (Goa)</option>
+                <option value="DXB">DXB (Dubai)</option>
+                <option value="BLR">BLR (Bengaluru)</option>
+                <option value="MAA">MAA (Chennai)</option>
+              </select>
+            </div>
+            <div class="form-group" style="align-self:flex-end">
+              <button class="btn btn-primary btn-sm" onclick="window.runDijkstraModal()">Compute Dijkstra Path</button>
+            </div>
+          </div>
+          <div id="modal-dijkstra-result" class="p-3" style="background:#0F172A;color:#38BDF8;border-radius:var(--radius-lg);font-family:var(--font-mono);font-size:12px">
+            Click "Compute Dijkstra Path" to run shortest path optimization on weighted directed route graph G=(V, E).
+          </div>
+        </div>
+      `;
+      terminalHtml = `
+[00:00.000] [DMGT::GRAPH] Airport route graph: 9 vertices, 18 directed edges.
+      `;
+      break;
+
+    // ── OOPJ TOPICS ──────────────────────────────────────────
+    case 'oopj-uml':
+      graphicHtml = `
+        <div style="width:100%">
+          <div class="text-sm mb-3"><strong>UML Class Inheritance & Encapsulation</strong></div>
+          <div class="grid grid-2 gap-4" style="font-family:var(--font-mono);font-size:12px">
+            <div class="p-4" style="background:white;border:1.5px solid var(--color-border);border-radius:var(--radius-lg)">
+              <div class="font-bold text-primary mb-2">abstract class Person</div>
+              <div style="color:#64748B">
+                #id: string<br>
+                #firstName: string<br>
+                #lastName: string<br>
+                #email: string<br>
+                #phone: string
+              </div>
+              <div class="mt-2 pt-2" style="border-top:1px dashed #E2E8F0">
+                + getFullName(): string<br>
+                + abstract getRole(): string
+              </div>
+            </div>
+
+            <div class="p-4" style="background:white;border:1.5px solid var(--color-border);border-radius:var(--radius-lg)">
+              <div class="font-bold text-success mb-2">class Passenger extends Person</div>
+              <div style="color:#64748B">
+                #tier: FrequentFlyerTier<br>
+                #frequentFlyerMiles: number<br>
+                #aadhaarNumber: string
+              </div>
+              <div class="mt-2 pt-2" style="border-top:1px dashed #E2E8F0">
+                + getTierWeight(): number<br>
+                + toRecord(): Object
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      terminalHtml = `
+[00:00.000] [OOPJ::ENCAPSULATION] Private fields (#) prevent external tampering of loyalty tiers and passenger identity.
+[00:00.000] Polymorphic dispatch guarantees clean subclass specialization without runtime type casts.
+      `;
+      break;
+
+    case 'oopj-strategy':
+      graphicHtml = `
+        <div style="width:100%">
+          <div class="form-row mb-3">
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Base Fare (₹)</label>
+              <input class="form-input form-input-sm" id="modal-refund-fare" type="number" value="5000">
+            </div>
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Hours Before Departure</label>
+              <input class="form-input form-input-sm" id="modal-refund-hours" type="number" value="48">
+            </div>
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Refund Policy Strategy</label>
+              <select class="form-select form-select-sm" id="modal-refund-policy">
+                <option value="tiered" selected>TieredRefundPolicy</option>
+                <option value="full">FullRefundPolicy</option>
+                <option value="nonrefundable">NonRefundablePolicy</option>
+              </select>
+            </div>
+            <div class="form-group" style="align-self:flex-end">
+              <button class="btn btn-primary btn-sm" onclick="window.calcRefundModal()">Execute Strategy</button>
+            </div>
+          </div>
+          <div id="modal-refund-result"></div>
+        </div>
+      `;
+      terminalHtml = `
+[00:00.000] [OOPJ::STRATEGY] Polymorphic Strategy Pattern ready.
+[00:00.000] Interface RefundPolicyStrategy defines calculateRefund(amount, hoursRemaining).
+      `;
+      break;
+
+    case 'oopj-exceptions':
+      graphicHtml = `
+        <div style="width:100%">
+          <div class="text-sm mb-3"><strong>Checked Booking Exception Hierarchy</strong></div>
+          <div class="p-3" style="background:#0F172A;color:#38BDF8;border-radius:var(--radius-lg);font-family:var(--font-mono);font-size:12px;line-height:1.6">
+            BookingException (Root Exception)<br>
+            ├── SeatUnavailableError (Physical seat claimed or locked by concurrent session)<br>
+            ├── DoubleBookingError (UNIQUE composite constraint violation)<br>
+            ├── LockTimeoutError (Mutex lock timed out after 10-minute hold TTL)<br>
+            ├── ValidationError (Identity verification failed in logic gates)<br>
+            └── CapacityExceededError (Aircraft physical limit reached without overbooking buffer)
+          </div>
+        </div>
+      `;
+      terminalHtml = `
+[00:00.000] [OOPJ::EXCEPTIONS] Checked exceptions ensure comprehensive compile-time and runtime fault tolerance.
+      `;
+      break;
+
+    // ── PYTHON ML TOPICS ─────────────────────────────────────
+    case 'python-sigmoid':
+      graphicHtml = `
+        <div class="sigmoid-container">
+          <div class="flex justify-between items-center w-full">
+            <div><strong>Sigmoid Curve Activation</strong>: <code>P(no-show) = 1 / (1 + e^-z)</code></div>
+            <div class="badge badge-accent" id="sigmoid-prob-display">P(No-Show): 10.8%</div>
+          </div>
+          <div class="w-full flex gap-4">
+            <div style="flex:1">
+              <label class="text-xs text-muted">Booking Lead Days: <strong id="lead-days-val">14</strong> days</label>
+              <input type="range" class="w-full" id="modal-lead-days" min="1" max="90" value="14" oninput="window.updateSigmoidCanvasModal()">
+            </div>
+            <div style="flex:1">
+              <label class="text-xs text-muted">Fare Class</label>
+              <select class="form-select form-select-sm" id="modal-fare-class" onchange="window.updateSigmoidCanvasModal()">
+                <option value="economy" selected>Economy (Base Rate: 0.12)</option>
+                <option value="premium">Premium Economy (Base Rate: 0.08)</option>
+                <option value="business">Business (Base Rate: 0.04)</option>
+              </select>
+            </div>
+          </div>
+          <canvas class="sigmoid-canvas" id="modal-sigmoid-canvas" width="600" height="180"></canvas>
+        </div>
+      `;
+      terminalHtml = `
+[00:00.000] [PYTHON::ML] Sigmoid activation model loaded with 7 trained weights.
+[00:00.000] Model formula: z = w0 + w1*LeadDays + w2*FareClass + w3*Seasonality.
+      `;
+      break;
+
+    case 'python-overbook':
+      graphicHtml = `
+        <div style="width:100%">
+          <div class="flex justify-between items-center mb-3">
+            <div><strong>Expected Binomial Cost Function</strong>: <code>min_b E[Cost(b)]</code></div>
+            <button class="btn btn-primary btn-sm" onclick="window.runOverbookingCalcModal()">Recalculate Optimal Buffer</button>
+          </div>
+          <div class="grid grid-3 gap-3 text-center mb-3">
+            <div class="p-3" style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:var(--radius-lg)">
+              <div class="text-xs text-success font-semibold">Optimal Overbook Buffer</div>
+              <div class="font-bold text-2xl text-success" id="ob-optimal-val">+4 Seats</div>
+              <div class="text-xs text-muted">Dynamic Capacity: 184</div>
+            </div>
+            <div class="p-3" style="background:#EFF6FF;border:1.5px solid #93C5FD;border-radius:var(--radius-lg)">
+              <div class="text-xs text-primary font-semibold">Minimum Expected Cost</div>
+              <div class="font-bold text-xl text-primary" id="ob-min-cost">₹14,250</div>
+              <div class="text-xs text-muted">Optimal risk tradeoff</div>
+            </div>
+            <div class="p-3" style="background:#FEF2F2;border:1.5px solid #FCA5A5;border-radius:var(--radius-lg)">
+              <div class="text-xs text-danger font-semibold">Denied Boarding Risk</div>
+              <div class="font-bold text-xl text-danger" id="ob-risk-val">&lt; 0.42%</div>
+              <div class="text-xs text-muted">Civil penalty bounded</div>
+            </div>
+          </div>
+          <div id="modal-ob-chart" style="height:120px;display:flex;align-items:flex-end;gap:6px;background:#0F172A;border-radius:var(--radius-lg);padding:16px 12px 6px 12px">
+            <!-- Dynamic Cost Bars -->
+          </div>
+        </div>
+      `;
+      terminalHtml = `
+[00:00.000] [PYTHON::OVERBOOKING] Binomial cost function initialized.
+[00:00.000] Balancing passenger bumping penalty (₹15,000) vs seat spoilage loss (₹4,500).
+      `;
+      break;
+
+    default:
+      graphicHtml = `<div class="text-muted p-4 text-center">Interactive graphical visualizer for ${tabKey}</div>`;
+      terminalHtml = `[00:00.000] Concept initialized.`;
+  }
+
+  return `
+    <!-- Top Visual Graphic Representation -->
+    <div class="concept-visual-container">
+      ${graphicHtml}
+    </div>
+
+    <!-- Live Backend Trace Terminal -->
+    <div class="concept-terminal" id="concept-modal-terminal">
+      <div class="concept-terminal-header">
+        <span>⚡ LIVE BACKEND EXECUTION TRACE & KERNEL PROOF</span>
+        <span>skyvoyage-kernel-runtime</span>
+      </div>
+      <div id="concept-modal-terminal-lines" style="white-space:pre-wrap;line-height:1.5">
+${terminalHtml.trim()}
+      </div>
+    </div>
+
+    <!-- Real-World Aviation Impact Callout -->
+    <div class="concept-impact-callout">
+      <strong>💡 Real-World Aviation Failure Prevention:</strong>
+      ${subject.impact}
+    </div>
+  `;
+}
+
+// ══════════════════════════════════════════════════════════
+//  INTERACTIVE CONCEPT MODAL ACTIONS & SIMULATIONS
+// ══════════════════════════════════════════════════════════
+
+function appendTerminalLog(msg, color = '#F8FAFC') {
+  const container = document.getElementById('concept-modal-terminal-lines');
+  if (container) {
+    const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
+    container.innerHTML += `\n<span style="color:${color}">[${timestamp}] ${msg}</span>`;
+    const term = document.getElementById('concept-modal-terminal');
+    if (term) term.scrollTop = term.scrollHeight;
+  }
+}
+
+function initConceptTabInteractive(tabKey) {
+  if (tabKey === 'python-sigmoid') {
+    setTimeout(() => window.updateSigmoidCanvasModal(), 50);
+  } else if (tabKey === 'adsa-btree') {
+    setTimeout(() => renderModalBTreeSvg(), 50);
+  } else if (tabKey === 'adsa-heap') {
+    setTimeout(() => renderModalHeapViz(), 50);
+  } else if (tabKey === 'dmgt-logic') {
+    setTimeout(() => renderModalLogicCircuitSvg(), 50);
+  } else if (tabKey === 'python-overbook') {
+    setTimeout(() => window.runOverbookingCalcModal(), 50);
+  }
+}
+
+// DBMS: Dual Concurrent Write Race
+window.runDualTransactionRace = async () => {
+  const boxA = document.getElementById('pax-client-a');
+  const boxB = document.getElementById('pax-client-b');
+  const badgeA = document.getElementById('status-badge-a');
+  const badgeB = document.getElementById('status-badge-b');
+  const btn = document.getElementById('btn-run-race');
+
+  if (btn) btn.disabled = true;
+  if (boxA) boxA.className = 'write-client-box';
+  if (boxB) boxB.className = 'write-client-box';
+  if (badgeA) badgeA.className = 'badge badge-info mt-2';
+  if (badgeB) badgeB.className = 'badge badge-info mt-2';
+
+  appendTerminalLog('🚀 Dispatching concurrent requests: Tx-101 and Tx-102 targeting Seat 14A...', '#38BDF8');
+
+  // Step 1: Tx A arrives at t=12ms
+  await new Promise(r => setTimeout(r, 600));
+  appendTerminalLog('▶ [TX-101::PAX-A] BEGIN TRANSACTION; (t = 0.012s)', '#FDE047');
+  appendTerminalLog('▶ [TX-101::PAX-A] SELECT * FROM seatInventory WHERE flight_id=101 AND seat_no=\'14A\' FOR UPDATE; ➔ Row Locked', '#FDE047');
+
+  // Step 2: Tx B arrives at t=14ms
+  await new Promise(r => setTimeout(r, 500));
+  appendTerminalLog('▶ [TX-102::PAX-B] BEGIN TRANSACTION; (t = 0.014s)', '#FDE047');
+  appendTerminalLog('▶ [TX-102::PAX-B] SELECT * FROM seatInventory WHERE flight_id=101 AND seat_no=\'14A\' FOR UPDATE; ➔ WAITING FOR LOCK...', '#FB923C');
+
+  // Step 3: Tx A commits
+  await new Promise(r => setTimeout(r, 700));
+  appendTerminalLog('▶ [TX-101::PAX-A] INSERT INTO bookings (pnr, flight_id, seat_no, status) VALUES (\'SK-92184\', 101, \'14A\', \'CONFIRMED\');', '#4ADE80');
+  appendTerminalLog('✅ [TX-101::PAX-A] COMMIT; ➔ 200 OK — Seat 14A Booked! PNR Issued: SK-92184', '#4ADE80');
+  if (boxA) boxA.classList.add('success');
+  if (badgeA) {
+    badgeA.className = 'badge badge-success mt-2';
+    badgeA.textContent = '200 OK: Seat Confirmed!';
+  }
+
+  // Step 4: Tx B rejected by constraint
+  await new Promise(r => setTimeout(r, 600));
+  appendTerminalLog('▶ [TX-102::PAX-B] INSERT INTO bookings (pnr, flight_id, seat_no, status) VALUES (\'SK-77412\', 101, \'14A\', \'CONFIRMED\');', '#F87171');
+  appendTerminalLog('❌ [DATABASE] ERROR 23505: duplicate key value violates unique constraint "uk_flight_seat"', '#EF4444');
+  appendTerminalLog('❌ [TX-102::PAX-B] ROLLBACK; ➔ 409 CONFLICT — Seat 14A already claimed. Double-booking prevented!', '#EF4444');
+  if (boxB) boxB.classList.add('failed');
+  if (badgeB) {
+    badgeB.className = 'badge badge-danger mt-2';
+    badgeB.textContent = '409 CONFLICT: Duplicate Key Aborted';
+  }
+
+  if (btn) btn.disabled = false;
+};
+
+// DBMS: Concurrency Stress Modal
+window.runConcurrencyStressModal = async () => {
+  const btn = document.getElementById('btn-stress-modal');
+  if (btn) btn.disabled = true;
+
+  appendTerminalLog('⚡ Launching 20 parallel threads against single seat resource...', '#38BDF8');
+
+  // Reset thread cells
+  for (let i = 0; i < 20; i++) {
+    const el = document.getElementById(`modal-thread-${i}`);
+    if (el) {
+      el.style.background = '#FEF08A';
+      el.style.color = '#854D0E';
+      el.textContent = `T${i+1}: ACQUIRING...`;
+    }
+  }
+
+  let winner = Math.floor(Math.random() * 20);
+
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 40));
+    const el = document.getElementById(`modal-thread-${i}`);
+    if (i === winner) {
+      if (el) {
+        el.style.background = '#DCFCE7';
+        el.style.color = '#166534';
+        el.style.borderColor = '#22C55E';
+        el.textContent = `T${i+1}: ✅ WON (200 OK)`;
+      }
+      appendTerminalLog(`✅ Thread-${i+1} acquired row lock and committed seat reservation!`, '#4ADE80');
+    } else {
+      if (el) {
+        el.style.background = '#FEE2E2';
+        el.style.color = '#991B1B';
+        el.style.borderColor = '#EF4444';
+        el.textContent = `T${i+1}: ❌ REJECTED`;
+      }
+    }
+  }
+
+  appendTerminalLog('━━━ CONCURRENCY PROOF: 1 SUCCESS, 19 REJECTED. ZERO DOUBLE-BOOKINGS. ━━━', '#38BDF8');
+  if (btn) btn.disabled = false;
+};
+
+// ADSA: B-Tree Modal
+const modalBTree = new BTree(2);
+['BOM-050', 'DEL-101', 'GOI-150', 'HYD-204', 'MAA-300', 'VTZ-400'].forEach(k => modalBTree.insert(k, { pnr: k }));
+
+function renderModalBTreeSvg(highlightKey = null) {
+  const container = document.getElementById('modal-btree-canvas');
+  if (!container) return;
+  const levels = modalBTree.levelOrder();
+  if (!levels || levels.length === 0) {
+    container.innerHTML = '<div class="text-muted text-xs">Tree is empty</div>';
     return;
   }
 
-  container.innerHTML = cards.map(c => `
-    <div class="syllabus-concept-card" id="concept-${c.id}">
-      <div class="concept-card-top">
-        <span class="concept-subject-tag" style="background:${c.color}20; color:${c.color}; border:1px solid ${c.color}40">${c.icon} ${c.subject}</span>
-        <span class="concept-unit-badge">${c.unit.split(':')[0]}</span>
-      </div>
-
-      <div class="concept-title">${c.title}</div>
-      <div class="text-xs text-muted mb-2 font-semibold">${c.unit}</div>
-
-      <div class="concept-topic">
-        <span>📌 Topics:</span> ${c.topics}
-      </div>
-
-      <div class="concept-code-location" title="Implemented in ${c.location}">
-        <span>📁 Implemented:</span> <code>${c.location}</code>
-      </div>
-
-      <div class="concept-example-box">
-        <strong>💡 Why This Concept Prevents Failures:</strong>
-        ${c.explanation}
-      </div>
-    </div>
-  `).join('');
-};
-
-window.filterSyllabusBySubject = (subject, btnEl) => {
-  currentSyllabusSubject = subject;
-  document.querySelectorAll('.syllabus-filter-pill').forEach(b => b.classList.remove('active'));
-  if (btnEl) btnEl.classList.add('active');
-  
-  const searchInput = document.getElementById('syllabus-search-input');
-  const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
-  
-  let filtered = SYLLABUS_KNOWLEDGE_BASE;
-  if (subject !== 'ALL') {
-    filtered = filtered.filter(item => item.subject.toUpperCase() === subject.toUpperCase());
-  }
-  if (query) {
-    filtered = filtered.filter(item => 
-      item.subject.toLowerCase().includes(query) ||
-      item.subjectFull.toLowerCase().includes(query) ||
-      item.unit.toLowerCase().includes(query) ||
-      item.topics.toLowerCase().includes(query) ||
-      item.title.toLowerCase().includes(query) ||
-      item.explanation.toLowerCase().includes(query) ||
-      item.location.toLowerCase().includes(query)
-    );
-  }
-  window.renderSyllabusCards(filtered);
-};
-
-window.handleSyllabusSearch = (query) => {
-  const q = (query || '').trim().toLowerCase();
-  let filtered = SYLLABUS_KNOWLEDGE_BASE;
-  if (currentSyllabusSubject !== 'ALL') {
-    filtered = filtered.filter(item => item.subject.toUpperCase() === currentSyllabusSubject.toUpperCase());
-  }
-  if (q) {
-    filtered = filtered.filter(item => 
-      item.subject.toLowerCase().includes(q) ||
-      item.subjectFull.toLowerCase().includes(q) ||
-      item.unit.toLowerCase().includes(q) ||
-      item.topics.toLowerCase().includes(q) ||
-      item.title.toLowerCase().includes(q) ||
-      item.explanation.toLowerCase().includes(q) ||
-      item.location.toLowerCase().includes(q)
-    );
-  }
-  window.renderSyllabusCards(filtered);
-};
-
-window.switchAcadTab = (tab) => {
-  document.querySelectorAll('[id^="acad-tab-"]').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById(`acad-tab-${tab}`)?.classList.add('active');
-  event.target.classList.add('active');
-};
-
-window.evalGates = () => {
-  const P = document.getElementById('gate-P')?.checked ?? false;
-  const Q = document.getElementById('gate-Q')?.checked ?? false;
-  const R = document.getElementById('gate-R')?.checked ?? false;
-  const S = document.getElementById('gate-S')?.checked ?? false;
-  const result = evaluateBookingFormula({ P, Q, R, S });
-  const display = document.getElementById('gate-result');
-  if (display) {
-    display.style.background = result.canBook ? 'var(--color-success-light)' : 'var(--color-danger-light)';
-    display.style.color = result.canBook ? '#065F46' : '#991B1B';
-    display.innerHTML = `${result.canBook ? '✓ TRUE' : '✗ FALSE'} — ${result.explanation}`;
-  }
-};
-
-window.loadSetDemo = async (flightId) => {
-  if (!flightId) return;
-  const demo = await getSetTheoryDemo(flightId);
-  document.getElementById('sets-results').innerHTML = `
-    <div class="grid grid-2 gap-4 mb-4">
-      <div class="card p-4"><strong>U</strong> (All Seats): |${demo.sets.U.size}| elements</div>
-      <div class="card p-4"><strong>B</strong> (Booked): |${demo.sets.B.size}| = {${demo.sets.B.elements.slice(0, 8).join(', ')}${demo.sets.B.size > 8 ? '...' : ''}}</div>
-      <div class="card p-4"><strong>H</strong> (Held): |${demo.sets.H.size}| = {${demo.sets.H.elements.slice(0, 8).join(', ')}${demo.sets.H.size > 8 ? '...' : ''}}</div>
-      <div class="card p-4" style="background:var(--color-success-light)"><strong>A = U ∖ (B ∪ H)</strong>: |${demo.sets.A.size}| available seats</div>
-    </div>
-    <div class="card p-4 mb-4"><strong>Occupancy Rate:</strong> ${demo.stats.occupancyRate}%</div>
-    <div class="card p-4"><strong>Injective Mapping Proof:</strong> ${demo.injection.proof}<br>Total Mappings: ${demo.injection.totalMappings}</div>
-  `;
-};
-
-window.runDijkstra = () => {
-  const from = document.getElementById('dijkstra-from').value;
-  const to = document.getElementById('dijkstra-to').value;
-  const result = findAlternativeRoute(from, to);
-  const display = document.getElementById('dijkstra-result');
-
-  if (result.found) {
-    display.innerHTML = `
-      <div class="card p-4" style="background:var(--color-success-light)">
-        <h4 class="mb-2">✓ Path Found</h4>
-        <div class="text-lg font-bold mb-2">${result.path.join(' → ')}</div>
-        <div class="mb-2">${result.summary}</div>
-        <div class="mt-3"><strong>Algorithm Steps:</strong> ${result.steps.length} iterations</div>
-        <div class="mt-2" style="font-family:var(--font-mono);font-size:var(--font-size-xs);max-height:200px;overflow-y:auto;background:var(--color-surface);padding:var(--space-3);border-radius:var(--radius-md)">
-          ${result.steps.filter(s => s.type !== 'init').map(s => `<div style="color:${s.type === 'found' ? 'var(--color-success)' : s.improved ? 'var(--color-primary)' : 'var(--color-text-muted)'}">${s.message}</div>`).join('')}
+  let html = '<div style="display:flex;flex-direction:column;gap:16px;align-items:center;width:100%">';
+  levels.forEach((lvl, lvlIdx) => {
+    html += '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">';
+    lvl.forEach(node => {
+      const isMatch = highlightKey && node.keys.some(k => k.key === highlightKey);
+      html += `
+        <div style="background:${isMatch ? '#22C55E' : '#1E293B'};color:white;border:1.5px solid ${isMatch ? '#86EFAC' : '#38BDF8'};border-radius:6px;padding:4px 8px;font-family:var(--font-mono);font-size:11px;box-shadow:${isMatch ? '0 0 10px #22C55E' : 'none'}">
+          ${node.keys.map(k => k.key).join(' | ')}
         </div>
-      </div>
-    `;
-  } else {
-    display.innerHTML = '<div class="card p-4" style="background:var(--color-danger-light)">❌ No path found between ' + from + ' and ' + to + '</div>';
-  }
-};
-
-// B-Tree Demo
-const demoTree = new BTree(2);
-window.btreeInsert = () => {
-  const key = document.getElementById('btree-key').value.trim().toUpperCase();
-  if (!key) return;
-  demoTree.insert(key, { key, insertedAt: Date.now() });
-  document.getElementById('btree-key').value = '';
-  showToast('B-Tree', `Inserted "${key}"`, 'success');
-  updateBTreeDemoViz();
-};
-window.btreeSearch = () => {
-  const key = document.getElementById('btree-search').value.trim().toUpperCase();
-  if (!key) return;
-  demoTree.resetComparisons();
-  const result = demoTree.search(key);
-  showToast('B-Tree Search', result ? `Found "${key}" in ${demoTree.comparisons} comparisons` : `"${key}" not found`, result ? 'success' : 'warning');
-};
-
-function updateBTreeDemoViz() {
-  const container = document.getElementById('btree-demo-viz');
-  if (!container) return;
-  const levels = demoTree.levelOrder();
-  if (levels.length === 0) {
-    container.innerHTML = '<div class="text-center text-muted p-4">Insert keys to build the B-Tree</div>';
-  } else {
-    let html = '<div style="display:flex;flex-direction:column;align-items:center;gap:12px">';
-    for (const level of levels) {
-      html += '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">';
-      for (const node of level) {
-        html += '<div class="tree-node">' + node.keys.map(k => k.key).join(' | ') + '</div>';
-      }
-      html += '</div>';
-    }
+      `;
+    });
     html += '</div>';
-    container.innerHTML = html;
-  }
-  const tel = demoTree.getTelemetry();
-  const telContainer = document.getElementById('btree-demo-telemetry');
-  if (telContainer) {
-    telContainer.innerHTML = `
-      <div class="card metric-card"><div class="metric-value">${tel.height}</div><div class="metric-label">Height</div></div>
-      <div class="card metric-card"><div class="metric-value">${tel.nodeCount}</div><div class="metric-label">Nodes</div></div>
-      <div class="card metric-card"><div class="metric-value">${tel.size}</div><div class="metric-label">Keys</div></div>
-    `;
-  }
+  });
+  html += '</div>';
+  container.innerHTML = html;
 }
 
-// Heap Demo
-const demoHeap = new MaxHeap();
-window.heapInsert = () => {
-  const name = document.getElementById('heap-name').value.trim();
-  const tier = document.getElementById('heap-tier').value;
+window.runBTreeSearchModal = () => {
+  const key = document.getElementById('modal-btree-search-key').value.trim().toUpperCase();
+  if (!key) return;
+  modalBTree.resetComparisons();
+  const res = modalBTree.search(key);
+  renderModalBTreeSvg(key);
+  appendTerminalLog(`🔍 B-Tree search for "${key}": ${res ? 'FOUND' : 'NOT FOUND'} in ${modalBTree.comparisons} key comparisons (O(log_m n)).`, res ? '#4ADE80' : '#F87171');
+};
+
+window.runBTreeInsertModal = () => {
+  const key = document.getElementById('modal-btree-insert-key').value.trim().toUpperCase();
+  if (!key) return;
+  modalBTree.insert(key, { pnr: key });
+  document.getElementById('modal-btree-insert-key').value = '';
+  renderModalBTreeSvg(key);
+  appendTerminalLog(`🌲 Inserted "${key}" into B-Tree (Order m=3). Balanced multi-way split completed!`, '#38BDF8');
+};
+
+// ADSA: MaxHeap Modal
+const modalHeap = new MaxHeap();
+[
+  { name: 'Rajesh S.', tier: 'gold', weight: 4 },
+  { name: 'Ananya V.', tier: 'silver', weight: 3 },
+  { name: 'Karthik P.', tier: 'bronze', weight: 2 },
+  { name: 'Deepa M.', tier: 'basic', weight: 1 }
+].forEach(p => {
+  modalHeap.insert({
+    id: p.name,
+    passengerName: p.name,
+    tier: p.tier,
+    priority: (p.weight * 100000) - Date.now()
+  });
+});
+
+function renderModalHeapViz() {
+  const container = document.getElementById('modal-heap-display');
+  if (!container) return;
+  const levels = modalHeap.toLevels();
+  if (!levels || levels.length === 0) {
+    container.innerHTML = '<div class="text-muted text-xs">Waitlist is empty</div>';
+    return;
+  }
+
+  let html = '<div style="display:flex;flex-direction:column;gap:10px;align-items:center;width:100%">';
+  levels.forEach((lvl, idx) => {
+    html += '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">';
+    lvl.forEach(item => {
+      const isGold = item.tier === 'gold';
+      html += `
+        <div style="background:${isGold ? '#CA8A04' : '#334155'};color:white;border-radius:6px;padding:4px 8px;font-family:var(--font-mono);font-size:10px;border:1px solid ${isGold ? '#FACC15' : '#475569'}">
+          <strong>${item.passengerName}</strong> (${item.tier.toUpperCase()})
+        </div>
+      `;
+    });
+    html += '</div>';
+  });
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+window.runHeapInsertModal = () => {
+  const name = document.getElementById('modal-heap-name').value.trim();
+  const tier = document.getElementById('modal-heap-tier').value;
   if (!name) return;
-  demoHeap.insert({ id: generateId('wl'), passengerId: generateId('p'), passengerName: name, flightId: 'demo', tier, priority: calculatePriority(tier, Date.now()), timestamp: Date.now() });
-  document.getElementById('heap-name').value = '';
-  showToast('MaxHeap', `Inserted "${name}" (${tier})`, 'success');
-  updateHeapDemoViz();
-};
-window.heapExtract = () => {
-  const max = demoHeap.extractMax();
-  if (max) {
-    showToast('MaxHeap ExtractMax', `Extracted "${max.passengerName}" (${max.tier}, priority: ${max.priority})`, 'info');
-  } else {
-    showToast('MaxHeap', 'Heap is empty', 'warning');
-  }
-  updateHeapDemoViz();
+  const weights = { gold: 4, silver: 3, bronze: 2, basic: 1 };
+  const priority = (weights[tier] * 100000) - Date.now();
+  modalHeap.insert({ id: name, passengerName: name, tier, priority });
+  renderModalHeapViz();
+  appendTerminalLog(`⭐ Inserted "${name}" (${tier.toUpperCase()}) into Standby Max-Heap. Priority Score: ${priority}.`, '#FBBF24');
 };
 
-function updateHeapDemoViz() {
-  const container = document.getElementById('heap-demo-viz');
-  if (!container) return;
-  const levels = demoHeap.toLevels();
-  if (levels.length === 0) {
-    container.innerHTML = '<div class="text-center text-muted p-4">Insert entries to build the heap</div>';
+window.runHeapExtractModal = () => {
+  const max = modalHeap.extractMax();
+  renderModalHeapViz();
+  if (max) {
+    appendTerminalLog(`🎉 EXTRACT-MAX: Promoted "${max.passengerName}" (${max.tier.toUpperCase()}) to freed seat in O(1) time! Heap restored in O(log n).`, '#4ADE80');
   } else {
-    let html = '<div class="heap-tree">';
-    for (const level of levels) {
-      html += '<div class="heap-level">';
-      for (const e of level) {
-        html += `<div class="heap-node"><span style="font-size:9px">${e.passengerName?.slice(0, 4)}</span><span style="font-size:8px">${e.tier}</span></div>`;
-      }
-      html += '</div>';
-    }
-    html += '</div>';
-    container.innerHTML = html;
+    appendTerminalLog('Standby priority queue is currently empty.', '#94A3B8');
   }
-  const tel = demoHeap.getTelemetry();
-  const telContainer = document.getElementById('heap-demo-telemetry');
-  if (telContainer) {
-    telContainer.innerHTML = `
-      <div class="card metric-card"><div class="metric-value">${tel.size}</div><div class="metric-label">Size</div></div>
-      <div class="card metric-card"><div class="metric-value">${tel.swaps}</div><div class="metric-label">Swaps</div></div>
-      <div class="card metric-card"><div class="metric-value">${tel.insertions}</div><div class="metric-label">Insertions</div></div>
+};
+
+// DMGT: Logic Gate Modal
+let logicSwitches = { P: true, Q: true, R: true, S: false };
+
+window.toggleLogicGateModal = (gate) => {
+  logicSwitches[gate] = !logicSwitches[gate];
+  const card = document.getElementById(`sw-${gate}`);
+  const badge = document.getElementById(`val-${gate}`);
+  if (card && badge) {
+    card.className = `logic-switch-card ${logicSwitches[gate] ? 'on' : 'off'}`;
+    badge.className = `badge ${logicSwitches[gate] ? 'badge-success' : 'badge-secondary'} mt-1`;
+    badge.textContent = logicSwitches[gate] ? 'TRUE (1)' : 'FALSE (0)';
+  }
+  renderModalLogicCircuitSvg();
+};
+
+function renderModalLogicCircuitSvg() {
+  const { P, Q, R, S } = logicSwitches;
+  const and1 = P && Q;
+  const or1 = R || S;
+  const out = and1 && or1;
+
+  const evalBadge = document.getElementById('logic-gate-eval-badge');
+  if (evalBadge) {
+    evalBadge.className = `badge ${out ? 'badge-success' : 'badge-danger'} font-bold`;
+    evalBadge.textContent = out ? '✓ EVALUATION: TRUE (CAN BOOK)' : '✗ EVALUATION: FALSE (BLOCKED)';
+  }
+
+  const svg = document.getElementById('logic-circuit-svg');
+  if (svg) {
+    const colP = P ? '#22C55E' : '#475569';
+    const colQ = Q ? '#22C55E' : '#475569';
+    const colR = R ? '#22C55E' : '#475569';
+    const colS = S ? '#22C55E' : '#475569';
+    const colAnd1 = and1 ? '#22C55E' : '#475569';
+    const colOr1 = or1 ? '#22C55E' : '#475569';
+    const colOut = out ? '#22C55E' : '#EF4444';
+
+    svg.innerHTML = `
+      <svg width="560" height="150" viewBox="0 0 560 150">
+        <!-- Input Lines -->
+        <line x1="20" y1="30" x2="100" y2="30" stroke="${colP}" stroke-width="3" />
+        <text x="30" y="24" fill="${colP}" font-size="10" font-family="monospace">P=${P?1:0}</text>
+
+        <line x1="20" y1="50" x2="100" y2="50" stroke="${colQ}" stroke-width="3" />
+        <text x="30" y="65" fill="${colQ}" font-size="10" font-family="monospace">Q=${Q?1:0}</text>
+
+        <line x1="20" y1="100" x2="100" y2="100" stroke="${colR}" stroke-width="3" />
+        <text x="30" y="94" fill="${colR}" font-size="10" font-family="monospace">R=${R?1:0}</text>
+
+        <line x1="20" y1="120" x2="100" y2="120" stroke="${colS}" stroke-width="3" />
+        <text x="30" y="135" fill="${colS}" font-size="10" font-family="monospace">S=${S?1:0}</text>
+
+        <!-- Gate 1: AND -->
+        <rect x="100" y="20" width="60" height="40" rx="6" fill="#1E293B" stroke="${colAnd1}" stroke-width="2" />
+        <text x="115" y="44" fill="white" font-size="11" font-weight="bold">AND</text>
+
+        <!-- Gate 2: OR -->
+        <rect x="100" y="90" width="60" height="40" rx="6" fill="#1E293B" stroke="${colOr1}" stroke-width="2" />
+        <text x="120" y="114" fill="white" font-size="11" font-weight="bold">OR</text>
+
+        <!-- Intermediate Lines -->
+        <line x1="160" y1="40" x2="240" y2="60" stroke="${colAnd1}" stroke-width="3" />
+        <line x1="160" y1="110" x2="240" y2="80" stroke="${colOr1}" stroke-width="3" />
+
+        <!-- Master Gate: AND -->
+        <rect x="240" y="50" width="70" height="50" rx="6" fill="#1E293B" stroke="${colOut}" stroke-width="2" />
+        <text x="260" y="80" fill="white" font-size="12" font-weight="bold">AND</text>
+
+        <!-- Output Line -->
+        <line x1="310" y1="75" x2="400" y2="75" stroke="${colOut}" stroke-width="4" />
+        <circle cx="410" cy="75" r="10" fill="${colOut}" />
+        <text x="430" y="80" fill="${colOut}" font-size="13" font-weight="bold" font-family="monospace">
+          CanBook = ${out ? 'TRUE' : 'FALSE'}
+        </text>
+      </svg>
     `;
   }
+  appendTerminalLog(`[DMGT::CIRCUIT] Evaluated CanBook: (${P?1:0} ∧ ${Q?1:0}) ∧ (${R?1:0} ∨ ${S?1:0}) = ${and1?1:0} ∧ ${or1?1:0} = ${out ? '1 (TRUE)' : '0 (FALSE)'}`, out ? '#4ADE80' : '#F87171');
 }
 
-// Refund Calculator
-window.calcRefund = () => {
-  const amount = parseInt(document.getElementById('refund-amount').value);
-  const hours = parseInt(document.getElementById('refund-hours').value);
-  const policyType = document.getElementById('refund-policy').value;
-  const policy = getRefundPolicy(policyType);
-  const result = policy.calculateRefund(amount, hours);
-  document.getElementById('refund-result').innerHTML = `
-    <div class="card p-4" style="background:${result.percentage > 0 ? 'var(--color-success-light)' : 'var(--color-danger-light)'}">
-      <div class="grid grid-4 gap-4">
-        <div><span class="text-muted text-sm">Policy</span><div class="font-bold">${policy.name}</div></div>
-        <div><span class="text-muted text-sm">Refund</span><div class="font-bold text-success">₹${result.refundAmount.toLocaleString()}</div></div>
-        <div><span class="text-muted text-sm">Percentage</span><div class="font-bold">${result.percentage}%</div></div>
-        <div><span class="text-muted text-sm">Fee</span><div class="font-bold text-danger">₹${result.fee.toLocaleString()}</div></div>
-      </div>
-      <div class="mt-3 text-sm">${result.reason}</div>
-    </div>
-  `;
+// DMGT: Dijkstra Modal
+window.runDijkstraModal = () => {
+  const from = document.getElementById('modal-dijkstra-from').value;
+  const to = document.getElementById('modal-dijkstra-to').value;
+  const res = findAlternativeRoute(from, to);
+  const display = document.getElementById('modal-dijkstra-result');
+  if (display) {
+    if (res.found) {
+      display.innerHTML = `
+        <div style="color:#4ADE80;font-weight:bold;margin-bottom:4px">✓ Optimal Route Found: ${res.path.join(' ➔ ')}</div>
+        <div>Summary: ${res.summary}</div>
+        <div class="mt-2 text-muted text-xs">Executed Dijkstra algorithm across priority queue in ${res.steps.length} iterations.</div>
+      `;
+      appendTerminalLog(`🌐 Dijkstra Route: ${from} ➔ ${to} solved via ${res.path.join(' ➔ ')}`, '#38BDF8');
+    } else {
+      display.innerHTML = `<div style="color:#EF4444">❌ No route found between ${from} and ${to}</div>`;
+      appendTerminalLog(`No route found between ${from} and ${to}`, '#EF4444');
+    }
+  }
 };
+
+// OOPJ: Strategy Refund Modal
+window.calcRefundModal = () => {
+  const fare = parseInt(document.getElementById('modal-refund-fare').value);
+  const hours = parseInt(document.getElementById('modal-refund-hours').value);
+  const policyType = document.getElementById('modal-refund-policy').value;
+  const policy = getRefundPolicy(policyType);
+  const res = policy.calculateRefund(fare, hours);
+
+  const display = document.getElementById('modal-refund-result');
+  if (display) {
+    display.innerHTML = `
+      <div class="p-3" style="background:#0F172A;color:#38BDF8;border-radius:var(--radius-lg);font-family:var(--font-mono);font-size:12px">
+        <div><strong>Dispatched Strategy:</strong> ${policy.name}</div>
+        <div style="color:#4ADE80">Refund Payout: ₹${res.refundAmount.toLocaleString()} (${res.percentage}%)</div>
+        <div style="color:#F87171">Cancellation Fee: ₹${res.fee.toLocaleString()}</div>
+        <div class="text-xs text-muted mt-1">${res.reason}</div>
+      </div>
+    `;
+  }
+  appendTerminalLog(`🧬 [OOPJ::STRATEGY] Polymorphic call: ${policy.name}.calculateRefund(${fare}, ${hours}) ➔ ₹${res.refundAmount} (${res.percentage}%)`, '#4ADE80');
+};
+
+// Python ML: Sigmoid Canvas Modal
+window.updateSigmoidCanvasModal = () => {
+  const leadDays = parseInt(document.getElementById('modal-lead-days')?.value || '14');
+  const fareClass = document.getElementById('modal-fare-class')?.value || 'economy';
+  const label = document.getElementById('lead-days-val');
+  if (label) label.textContent = leadDays;
+
+  // Weights approximation from Python trained model
+  const classWeights = { economy: 0.12, premium: 0.08, business: 0.04 };
+  const baseRate = classWeights[fareClass] || 0.10;
+  const z = -2.2 + (leadDays * 0.025) + (baseRate * 5);
+  const p = 1 / (1 + Math.exp(-z));
+
+  const probDisplay = document.getElementById('sigmoid-prob-display');
+  if (probDisplay) {
+    probDisplay.textContent = `P(No-Show): ${(p * 100).toFixed(1)}% (z = ${z.toFixed(2)})`;
+  }
+
+  const canvas = document.getElementById('modal-sigmoid-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Axes
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(40, 20); ctx.lineTo(40, h - 25); ctx.lineTo(w - 20, h - 25);
+  ctx.stroke();
+
+  // Grid lines
+  ctx.fillStyle = '#64748B';
+  ctx.font = '10px monospace';
+  ctx.fillText('1.0', 10, 25);
+  ctx.fillText('0.5', 10, (h - 25) / 2 + 10);
+  ctx.fillText('0.0', 10, h - 25);
+  ctx.fillText('z=-6', 40, h - 10);
+  ctx.fillText('z=0', w / 2, h - 10);
+  ctx.fillText('z=+6', w - 40, h - 10);
+
+  // Draw Sigmoid curve
+  ctx.strokeStyle = '#38BDF8';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let px = 40; px <= w - 20; px++) {
+    const curZ = ((px - 40) / (w - 60)) * 12 - 6;
+    const curP = 1 / (1 + Math.exp(-curZ));
+    const py = (h - 25) - curP * (h - 45);
+    if (px === 40) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+
+  // Current point
+  const mappedX = 40 + ((z + 6) / 12) * (w - 60);
+  const mappedY = (h - 25) - p * (h - 45);
+
+  ctx.fillStyle = '#F43F5E';
+  ctx.beginPath();
+  ctx.arc(mappedX, mappedY, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+};
+
+// Python ML: Overbooking Calculation Modal
+window.runOverbookingCalcModal = () => {
+  const result = findOptimalOverbooking({
+    capacity: 180,
+    noShowRate: 0.10,
+    bumpCost: 15000,
+    spoilLoss: 4500
+  });
+
+  const optVal = document.getElementById('ob-optimal-val');
+  const minCost = document.getElementById('ob-min-cost');
+  const chart = document.getElementById('modal-ob-chart');
+
+  if (optVal) optVal.textContent = `+${result.optimalLevel} Seats`;
+  if (minCost) minCost.textContent = `₹${result.minimumExpectedCost.toLocaleString()}`;
+
+  if (chart) {
+    const maxCost = Math.max(...result.costCurve.map(x => x.expectedCost));
+    chart.innerHTML = result.costCurve.slice(0, 11).map(c => {
+      const hPct = maxCost > 0 ? (c.expectedCost / maxCost) * 100 : 0;
+      const isOpt = c.overbookingLevel === result.optimalLevel;
+      return `
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end">
+          <span style="font-size:8px;color:${isOpt ? '#22C55E' : '#64748B'};font-family:monospace">${c.overbookingLevel}</span>
+          <div style="width:100%;height:${hPct}%;background:${isOpt ? '#22C55E' : '#334155'};border-radius:3px 3px 0 0;box-shadow:${isOpt ? '0 0 10px #22C55E' : 'none'}"></div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  appendTerminalLog(`🤖 [PYTHON::COST] Binomial optimizer: Optimal buffer b* = +${result.optimalLevel} seats with minimum expected loss ₹${result.minimumExpectedCost}.`, '#22C55E');
+};
+
 
 // ══════════════════════════════════════════════════════════
 //  ROUTER
@@ -3918,12 +4088,10 @@ window.calcRefund = () => {
 
 const routes = {
   'home': { render: renderHomePage, init: initHomePage },
-  'dashboard': { render: renderDashboardPage, init: initDashboardPage },
   'search': { render: renderSearchPage, init: initSearchPage },
   'seats': { render: (id) => renderSeatPage(id), init: (id) => initSeatPage(id) },
   'booking': { render: renderBookingPage },
   'bookings': { render: renderBookingsPage },
-  'admin': { render: renderAdminPage },
   'academic': { render: renderAcademicPage, init: initAcademicPage },
 };
 
