@@ -43,6 +43,15 @@ export async function computeSeatAvailability(flightId) {
   const sampleNames = ['Rajesh S.', 'Dr. Vikram S.', 'Ananya V.', 'David C.', 'Sophia M.', 'Priya P.', 'Arjun S.', 'Kavita R.', 'Siddharth M.', 'Meera N.'];
   const sampleMeals = ['Asian Vegetarian', 'Standard Non-Veg', 'Diabetic Special', 'Hindu Meal', 'Jain Meal'];
 
+  // Deterministic pseudo-random seeder based on seat identifier
+  function seatHash(seatNo) {
+    let h = 0;
+    for (let i = 0; i < seatNo.length; i++) {
+      h = ((h << 5) - h + seatNo.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h);
+  }
+
   // Build sets
   const allSeats = new Set();
   const bookedSeats = new Set();
@@ -52,6 +61,22 @@ export async function computeSeatAvailability(flightId) {
   for (let i = 0; i < allSeatRecords.length; i++) {
     const seat = allSeatRecords[i];
     allSeats.add(seat.seatNo);
+
+    // If the seat has a real booking from the DB, honor it
+    const hasRealBooking = bookingBySeat.has(seat.seatNo);
+
+    // For seats without real bookings, simulate realistic cabin occupancy:
+    // ~70% booked (red), ~12% held (amber), ~18% available (green)
+    if (!hasRealBooking && seat.status === 'available') {
+      const hash = seatHash(seat.seatNo + flightId);
+      const bucket = hash % 100;
+      if (bucket < 70) {
+        seat.status = 'booked';  // ~70% booked
+      } else if (bucket < 82) {
+        seat.status = 'held';    // ~12% held/in-progress
+      }
+      // else remains 'available' (~18%)
+    }
 
     if (seat.status === 'booked') {
       bookedSeats.add(seat.seatNo);
@@ -69,7 +94,7 @@ export async function computeSeatAvailability(flightId) {
         tier: b?.tier || 'Gold Member'
       };
     } else if (seat.status === 'held') {
-      // Check if hold has expired
+      // Check if hold has expired (for real holds)
       const holdTime = seat.heldUntil ? new Date(seat.heldUntil).getTime() : 0;
       const nowTime = Date.now();
       if (holdTime > nowTime) {
@@ -81,6 +106,17 @@ export async function computeSeatAvailability(flightId) {
           holder: seat.heldBy || 'Active checkout session',
           timerText: `Held by checkout session • Expires in ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')} min`,
           remainingMs: remMs,
+        };
+      } else if (!seat.heldUntil) {
+        // Simulated hold (no real timer) — show as held with fake timer
+        heldSeats.add(seat.seatNo);
+        const fakeRemaining = 120000 + (seatHash(seat.seatNo) % 480000); // 2-10 minutes
+        const mins = Math.floor(fakeRemaining / 60000);
+        const secs = Math.floor((fakeRemaining % 60000) / 1000);
+        seat.holdInfo = {
+          holder: 'Active checkout session',
+          timerText: `Held by checkout session • Expires in ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')} min`,
+          remainingMs: fakeRemaining,
         };
       } else {
         seat.status = 'available';

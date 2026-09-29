@@ -3016,30 +3016,34 @@ table.data-table {
 }
 
 /* ── Interactive Concept Modal ─────────────────────────────── */
-.concept-modal-backdrop {
+.concept-modal-backdrop,
+.academic-modal-overlay {
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.75);
   backdrop-filter: blur(8px);
-  z-index: 2000;
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 9999;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: var(--space-4);
+  padding: 2.5rem 1rem;
+  overflow-y: auto;
   animation: fadeIn 0.25s ease-out;
 }
 
 .concept-modal-dialog {
   background: white;
   width: 100%;
-  max-width: 980px;
-  max-height: 92vh;
-  border-radius: var(--radius-2xl);
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  max-width: 900px;
+  margin: auto;
+  max-height: 90vh;
+  border-radius: 16px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   animation: modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -3301,4 +3305,329 @@ table.data-table {
   border-radius: var(--radius-lg);
   box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5);
   max-width: 100%;
+}
+
+/* ══════════════════════════════════════════════════════════
+   MULTI-PASSENGER BOOKING ENGINE STYLES
+   ══════════════════════════════════════════════════════════ */
+
+.pax-count-selector {
+  background: var(--color-bg);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+}
+
+.pax-count-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.pax-count-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: white;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--color-text-secondary);
+}
+
+.pax-count-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-lighter);
+}
+
+.pax-count-btn.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: white;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.pax-form-block {
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  margin-bottom: var(--space-4);
+  background: white;
+  position: relative;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pax-form-block:hover {
+  border-color: var(--color-primary-light);
+  box-shadow: 0 2px 12px rgba(59, 130, 246, 0.08);
+}
+
+.pax-form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.pax-form-num {
+  font-weight: 800;
+  font-size: 1rem;
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pax-form-num::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  display: inline-block;
+}
+
+/* ══════════════════════════════════════════════════════════
+   SEATWATCH ALERT CARD
+   ══════════════════════════════════════════════════════════ */
+
+.seatwatch-alert-card {
+  background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+  border: 1.5px solid #F59E0B;
+  border-radius: var(--radius-xl);
+  padding: var(--space-4) var(--space-5);
+  margin-top: var(--space-4);
+  animation: slideIn 0.3s ease-out;
+}
+
+.seatwatch-alert-content {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.seatwatch-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.seatwatch-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ══════════════════════════════════════════════════════════
+   INTERACTIVE PIPELINE NODES
+   ══════════════════════════════════════════════════════════ */
+
+.pipeline-interactive {
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.pipeline-interactive:hover {
+  transform: translateY(-4px) scale(1.05);
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.25);
+  border-color: #60A5FA !important;
+}
+
+.pipeline-node.pulse-active {
+  animation: pipelinePulse 0.8s ease-out;
+  border-color: #60A5FA !important;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+}
+
+@keyframes pipelinePulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 rgba(59, 130, 246, 0.4); }
+  50% { transform: scale(1.08); box-shadow: 0 0 20px rgba(59, 130, 246, 0.6); }
+  100% { transform: scale(1); box-shadow: 0 0 10px rgba(59, 130, 246, 0.3); }
+}
+
+.pipeline-drawer {
+  background: #0F172A;
+  border: 1px solid #334155;
+  border-radius: var(--radius-xl);
+  margin-top: var(--space-4);
+  overflow: hidden;
+  animation: slideIn 0.25s ease-out;
+}
+
+.pipeline-drawer-content {
+  padding: 0;
+}
+
+.pipeline-drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  background: #1E293B;
+  border-bottom: 1px solid #334155;
+  color: #F1F5F9;
+  font-size: 0.95rem;
+}
+
+.pipeline-drawer-body {
+  padding: var(--space-3) var(--space-4);
+}
+
+.pipeline-drawer-row {
+  display: flex;
+  gap: var(--space-3);
+  padding: 6px 0;
+  border-bottom: 1px solid #1E293B;
+  font-size: 0.8rem;
+  color: #CBD5E1;
+  line-height: 1.5;
+}
+
+.pipeline-drawer-row:last-child {
+  border-bottom: none;
+}
+
+.pipeline-drawer-label {
+  color: #60A5FA;
+  font-weight: 700;
+  white-space: nowrap;
+  min-width: 120px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+/* ══════════════════════════════════════════════════════════
+   PASSENGER SEAT ASSIGNMENT & PRICING RECEIPT STYLES
+   ══════════════════════════════════════════════════════════ */
+
+.pax-assignment-container {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.pax-assignment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.pax-assignment-chip {
+  background: white;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+}
+
+.pax-assignment-chip.active-target {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-lighter);
+  background: #F0F7FF;
+}
+
+.pax-assignment-chip.assigned {
+  border-color: #10B981;
+  background: #F0FDF4;
+}
+
+.pax-chip-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.pax-chip-name {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--color-text);
+}
+
+.pax-chip-status {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.pax-chip-badge {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 0.85rem;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.price-breakdown-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.price-breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  border-bottom: 1px dashed var(--color-border-light);
+}
+
+.price-breakdown-row.total-row {
+  border-bottom: none;
+  border-top: 2px solid var(--color-border);
+  margin-top: 8px;
+  padding-top: 12px;
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: var(--color-primary-dark);
+}
+
+.multi-pax-tickets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-4);
+  margin: var(--space-6) 0;
+  text-align: left;
+}
+
+.multi-pax-ticket-card {
+  background: white;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.multi-pax-ticket-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-primary-light);
+}
+
+.multi-pax-ticket-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--color-primary), #00C48C);
 }

@@ -43,12 +43,15 @@ if (typeof sessionStorage !== 'undefined') {
 }
 
 const state = {
-  currentPage: 'home',
+  currentPage: 'search',
   selectedFlight: null,
   selectedSeat: null,
   holdId: null,
   holdTimer: null,
   passengerData: {},
+  passengerCount: 1,
+  passengers: [{}],
+  selectedSeats: [],
   searchResults: [],
   session_hold_id: initialSessionId,
   tripType: 'oneway',
@@ -113,12 +116,11 @@ function renderNavbar() {
   return `
     <nav class="navbar" id="navbar">
       <div class="navbar-inner">
-        <a href="#/home" class="navbar-brand">
+        <a href="#/search" class="navbar-brand">
           ${icons.plane}
           <span>Sky<span class="accent">Voyage</span></span>
         </a>
         <div class="navbar-nav" id="nav-links">
-          <a href="#/home" class="nav-link" data-page="home">${icons.home} Home</a>
           <a href="#/search" class="nav-link" data-page="search">${icons.search} Flights</a>
           <a href="#/bookings" class="nav-link" data-page="bookings">${icons.ticket} My Bookings</a>
           <a href="#/academic" class="nav-link" data-page="academic">${icons.book} Academics (5 Subjects)</a>
@@ -442,128 +444,143 @@ export function generateQRCodeSVG(text, size = 130) {
 // ══════════════════════════════════════════════════════════
 
 window.showETicketModal = async (pnr) => {
-  const booking = await lookupByPNR(pnr);
-  if (!booking) {
+  document.getElementById('eticket-modal')?.remove();
+
+  let bookingsToRender = [];
+  if (pnr === 'all' && state.confirmedBookings?.length) {
+    bookingsToRender = state.confirmedBookings;
+  } else {
+    const single = (state.confirmedBookings || []).find(b => b.pnr === pnr) || (await lookupByPNR(pnr));
+    if (single) bookingsToRender = [single];
+  }
+
+  if (bookingsToRender.length === 0) {
     showToast('Error', `Booking with PNR ${pnr} not found`, 'error');
     return;
   }
 
-  const flight = (await get('flights', booking.flightId)) || {
-    flightNumber: booking.flightNumber || 'SV101',
+  const flight = (await get('flights', bookingsToRender[0].flightId)) || state.selectedFlight || {
+    flightNumber: 'AI442',
     origin: 'VTZ', destination: 'HYD', aircraft: 'Airbus A320neo',
     departureTime: new Date(Date.now() + 86400000).toISOString(),
-    airline: booking.airline || 'Air India',
+    airline: 'Air India',
   };
 
   const originInfo = AIRPORTS[flight.origin] || { city: flight.origin, name: flight.origin };
   const destInfo = AIRPORTS[flight.destination] || { city: flight.destination, name: flight.destination };
   const depTime = new Date(flight.departureTime);
 
-  const qrPayload = `IATA:${flight.flightNumber}/${booking.pnr}/${booking.seatNo}/${booking.passengerName}/${flight.origin}-${flight.destination}`;
-  const qrSvg = generateQRCodeSVG(qrPayload, 120);
+  const passesHtml = bookingsToRender.map(booking => {
+    const qrPayload = `IATA:${flight.flightNumber}/${booking.pnr}/${booking.seatNo}/${booking.passengerName}/${flight.origin}-${flight.destination}`;
+    const qrSvg = generateQRCodeSVG(qrPayload, 120);
 
-  // Remove existing modal if any
-  document.getElementById('eticket-modal')?.remove();
-
-  const modalHtml = `
-    <div class="modal-backdrop" id="eticket-modal" onclick="if(event.target===this) window.closeETicketModal()">
-      <div class="ticket-modal-card">
-        <div class="boarding-pass" id="printable-boarding-pass">
-          <!-- Main Ticket Section -->
-          <div class="boarding-pass-main">
-            <div class="pass-header">
-              <div class="pass-airline">
-                <span>✈️</span>
-                <span>${booking.airline || flight.airline || 'SkyVoyage Enterprise'}</span>
-              </div>
-              <div class="pass-badge">ELECTRONIC BOARDING PASS</div>
+    return `
+      <div class="boarding-pass mb-6" id="printable-boarding-pass">
+        <!-- Main Ticket Section -->
+        <div class="boarding-pass-main">
+          <div class="pass-header">
+            <div class="pass-airline">
+              <span>✈️</span>
+              <span>${booking.airline || flight.airline || 'SkyVoyage Enterprise'}</span>
             </div>
+            <div class="pass-badge">ELECTRONIC BOARDING PASS</div>
+          </div>
 
-            <div class="pass-route">
-              <div class="pass-airport">
-                <div class="pass-code">${flight.origin}</div>
-                <div class="pass-city">${originInfo.city}</div>
-                <div class="text-xs text-muted">${originInfo.name}</div>
-              </div>
-              <div style="font-size:1.5rem;color:var(--color-primary);font-weight:700">✈ ➔</div>
-              <div class="pass-airport dest">
-                <div class="pass-code">${flight.destination}</div>
-                <div class="pass-city">${destInfo.city}</div>
-                <div class="text-xs text-muted">${destInfo.name}</div>
-              </div>
+          <div class="pass-route">
+            <div class="pass-airport">
+              <div class="pass-code">${flight.origin}</div>
+              <div class="pass-city">${originInfo.city}</div>
+              <div class="text-xs text-muted">${originInfo.name}</div>
             </div>
-
-            <div class="pass-details-grid">
-              <div>
-                <div class="pass-label">Passenger</div>
-                <div class="pass-val">${booking.passengerName}</div>
-              </div>
-              <div>
-                <div class="pass-label">Flight</div>
-                <div class="pass-val font-mono">${flight.flightNumber}</div>
-              </div>
-              <div>
-                <div class="pass-label">Gate</div>
-                <div class="pass-val font-mono">${booking.gate || 'G4'}</div>
-              </div>
-              <div>
-                <div class="pass-label">Boarding Time</div>
-                <div class="pass-val text-primary font-bold">${booking.boardingTime || '10:00 AM'}</div>
-              </div>
-            </div>
-
-            <div class="pass-details-grid">
-              <div>
-                <div class="pass-label">Departure Date</div>
-                <div class="pass-val">${depTime.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
-              </div>
-              <div>
-                <div class="pass-label">Departure Time</div>
-                <div class="pass-val font-mono">${depTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-              </div>
-              <div>
-                <div class="pass-label">Seat</div>
-                <div class="pass-val" style="font-size:1.25rem;color:var(--color-primary);font-weight:800">${booking.seatNo}</div>
-              </div>
-              <div>
-                <div class="pass-label">Cabin Class</div>
-                <div class="pass-val font-semibold" style="text-transform:capitalize">${booking.seatClass || 'Economy'}</div>
-              </div>
-            </div>
-
-            <div class="mt-4 pt-3 border-t flex justify-between items-center">
-              <div>
-                <span class="text-xs text-muted">ID Verification:</span>
-                <span class="text-xs font-semibold text-secondary ml-1">${(booking.idType || 'Aadhaar').toUpperCase()}: ${booking.idNumber || 'VERIFIED'}</span>
-                <span class="badge badge-success ml-2" style="font-size:10px">Govt Verified ✓</span>
-              </div>
-              <div class="pass-barcode">||| | ||||| || |||||| | |||</div>
+            <div style="font-size:1.5rem;color:var(--color-primary);font-weight:700">✈ ➔</div>
+            <div class="pass-airport dest">
+              <div class="pass-code">${flight.destination}</div>
+              <div class="pass-city">${destInfo.city}</div>
+              <div class="text-xs text-muted">${destInfo.name}</div>
             </div>
           </div>
 
-          <!-- Perforated Stub Section -->
-          <div class="boarding-pass-stub">
-            <div class="text-center w-full">
-              <div class="text-xs font-bold text-muted uppercase">Passenger Stub</div>
-              <div class="text-sm font-extrabold text-secondary mt-1">${booking.passengerName}</div>
-              <div class="font-mono text-xs text-muted">${flight.flightNumber} · ${flight.origin}→${flight.destination}</div>
+          <div class="pass-details-grid">
+            <div>
+              <div class="pass-label">Passenger</div>
+              <div class="pass-val">${booking.passengerName}</div>
             </div>
+            <div>
+              <div class="pass-label">Flight</div>
+              <div class="pass-val font-mono">${flight.flightNumber}</div>
+            </div>
+            <div>
+              <div class="pass-label">Gate</div>
+              <div class="pass-val font-mono">${booking.gate || 'G4'}</div>
+            </div>
+            <div>
+              <div class="pass-label">Boarding Time</div>
+              <div class="pass-val text-primary font-bold">${booking.boardingTime || '10:00 AM'}</div>
+            </div>
+          </div>
 
-            <div class="pass-qr-wrap">
-              ${qrSvg}
-              <div class="text-xs font-mono font-bold tracking-widest text-primary">${booking.pnr}</div>
+          <div class="pass-details-grid">
+            <div>
+              <div class="pass-label">Departure Date</div>
+              <div class="pass-val">${depTime.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
             </div>
+            <div>
+              <div class="pass-label">Departure Time</div>
+              <div class="pass-val font-mono">${depTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+            </div>
+            <div>
+              <div class="pass-label">Seat</div>
+              <div class="pass-val" style="font-size:1.25rem;color:var(--color-primary);font-weight:800">${booking.seatNo}</div>
+            </div>
+            <div>
+              <div class="pass-label">Cabin Class</div>
+              <div class="pass-val font-semibold" style="text-transform:capitalize">${booking.seatClass || 'Economy'}</div>
+            </div>
+          </div>
 
-            <div class="text-center w-full">
-              <div class="text-xs text-muted">Seat</div>
-              <div class="font-extrabold text-2xl text-secondary">${booking.seatNo}</div>
-              <div class="badge badge-success badge-dot mt-1" style="font-size:10px">${booking.status.toUpperCase()}</div>
+          <div class="mt-4 pt-3 border-t flex justify-between items-center">
+            <div>
+              <span class="text-xs text-muted">ID Verification:</span>
+              <span class="text-xs font-semibold text-secondary ml-1">${(booking.idType || 'Aadhaar').toUpperCase()}: ${booking.idNumber || 'VERIFIED'}</span>
+              <span class="badge badge-success ml-2" style="font-size:10px">Govt Verified ✓</span>
+              ${booking.mealPreference ? `<span class="badge badge-neutral ml-1" style="font-size:10px">${booking.mealPreference}</span>` : ''}
             </div>
+            <div class="pass-barcode">||| | ||||| || |||||| | |||</div>
           </div>
         </div>
 
+        <!-- Perforated Stub Section -->
+        <div class="boarding-pass-stub">
+          <div class="text-center w-full">
+            <div class="text-xs font-bold text-muted uppercase">Passenger Stub</div>
+            <div class="text-sm font-extrabold text-secondary mt-1">${booking.passengerName}</div>
+            <div class="font-mono text-xs text-muted">${flight.flightNumber} · ${flight.origin}→${flight.destination}</div>
+          </div>
+
+          <div class="pass-qr-wrap">
+            ${qrSvg}
+            <div class="text-xs font-mono font-bold tracking-widest text-primary">${booking.pnr}</div>
+          </div>
+
+          <div class="text-center w-full">
+            <div class="text-xs text-muted">Seat</div>
+            <div class="font-extrabold text-2xl text-secondary">${booking.seatNo}</div>
+            <div class="badge badge-success badge-dot mt-1" style="font-size:10px">${(booking.status || 'CONFIRMED').toUpperCase()}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const modalHtml = `
+    <div class="modal-backdrop" id="eticket-modal" onclick="if(event.target===this) window.closeETicketModal()">
+      <div class="ticket-modal-card" style="max-height:92vh;overflow-y:auto">
+        <div style="padding:1.5rem">
+          ${passesHtml}
+        </div>
+
         <!-- Modal Actions Footer -->
-        <div class="p-4 border-t flex justify-between items-center no-print" style="background:var(--color-bg)">
+        <div class="p-4 border-t flex justify-between items-center no-print" style="background:var(--color-bg);position:sticky;bottom:0;z-index:10">
           <div class="text-xs text-muted">
             <span>🔒 Concurrency Protected · Indexed in B-Tree (Order t=3)</span>
           </div>
@@ -1040,8 +1057,11 @@ function initSearchPage() {
 window.selectFlight = async (flightId) => {
   state.selectedFlight = await get('flights', flightId);
   state.selectedSeat = null;
+  state.selectedSeats = [];
   state.holdId = null;
-  state.bookingStep = 1; // Step 1: Explicit Passenger Details Form
+  state.passengerCount = 1;
+  state.passengers = [{}];
+  state.bookingStep = 1;
   window.location.hash = '#/booking';
 };
 
@@ -1120,15 +1140,19 @@ async function renderBookingPage() {
               <div class="summary-row"><span class="label">Date</span><span class="value">${new Date(flight.departureTime).toLocaleDateString()}</span></div>
               <div class="summary-row"><span class="label">Aircraft</span><span class="value text-sm">${flight.aircraft}</span></div>
 
-              ${state.passengerData?.firstName ? `
+              ${state.passengers?.length > 0 && state.passengers[0]?.fullName ? `
                 <div class="mt-3 pt-3 border-t">
-                  <div class="text-xs text-muted mb-1">Passenger</div>
-                  <div class="font-bold">${state.passengerData.firstName} ${state.passengerData.lastName}</div>
-                  <div class="text-xs text-secondary">${state.passengerData.nationality === 'Indian' ? '🇮🇳 Indian Citizen' : '🌐 Foreign National'} · ${(state.passengerData.idType || '').toUpperCase()}</div>
+                  <div class="text-xs text-muted mb-1">Passengers (${state.passengerCount || 1})</div>
+                  ${state.passengers.filter(p => p?.fullName).map((p, i) =>
+                    `<div class="text-sm ${i > 0 ? 'mt-1' : ''}"><strong>${i+1}.</strong> ${p.fullName} <span class="text-xs text-muted">(${p.nationality === 'Indian' ? '🇮🇳' : '🌐'} ${(p.idType || '').toUpperCase()})</span></div>`
+                  ).join('')}
                 </div>
               ` : ''}
 
-              ${state.selectedSeat ? `
+              ${state.selectedSeats?.length > 0 ? `
+                <div class="summary-row mt-3 pt-3 border-t"><span class="label">Seats</span><span class="value font-bold text-primary">${state.selectedSeats.map(s => s.seatNo).join(', ')}</span></div>
+                <div class="summary-total"><span>Total (${state.selectedSeats.length} pax)</span><span>₹${state.selectedSeats.reduce((sum, s) => sum + s.price, 0).toLocaleString()}</span></div>
+              ` : state.selectedSeat ? `
                 <div class="summary-row mt-3 pt-3 border-t"><span class="label">Seat</span><span class="value font-bold text-primary">${state.selectedSeat.seatNo} (${state.selectedSeat.class})</span></div>
                 <div class="summary-total"><span>Total Fare</span><span>₹${state.selectedSeat.price.toLocaleString()}</span></div>
               ` : `
@@ -1151,162 +1175,213 @@ async function renderCurrentBookingStep(step) {
   const pax = state.passengerData || {};
 
   if (step === 1) {
-    // ── STEP 1: PASSENGER DETAILS & CONDITIONAL IDENTITY VERIFICATION ──
-    const passengers = await getAll('passengers');
-    const isIndian = (pax.nationality || 'Indian') === 'Indian';
+    // ── STEP 1: MULTI-PASSENGER DETAILS & CONDITIONAL IDENTITY VERIFICATION ──
+    const dbPassengers = await getAll('passengers');
+    const paxCount = state.passengerCount || 1;
 
     return `
       <div class="card animate-in">
         <div class="card-header">
           <div>
             <h3>Step 1: Passenger Details & Identity Verification</h3>
-            <p class="text-sm text-muted">Complete conditional identity requirements before proceeding to seat allocation.</p>
+            <p class="text-sm text-muted">Enter details for 1 to 5 passengers. Each passenger undergoes identity verification, meal customization, and assistance selection.</p>
           </div>
           <span class="badge badge-info">DMGT Unit 1 Gate P</span>
         </div>
         <div class="card-body">
-          <!-- Pre-fill for instant demo/viva -->
-          <div class="form-group mb-5 p-3" style="background:var(--color-bg);border-radius:var(--radius-lg)">
-            <label class="form-label text-xs font-bold text-muted uppercase">Quick Viva Demo: Pre-fill Passenger</label>
-            <select class="form-select" id="pax-select" onchange="window.fillPassenger(this.value)">
-              <option value="">— Choose a demo profile or type manually —</option>
-              ${passengers.map(p => `<option value="${p.id}" ${pax.id === p.id ? 'selected' : ''}>${p.firstName} ${p.lastName} (${p.nationality || 'Indian'} · ${(p.idType || 'Aadhaar').toUpperCase()})</option>`).join('')}
-            </select>
-          </div>
-
-          <!-- Basic Contact Details -->
-          <div class="form-row mb-4">
-            <div class="form-group">
-              <label class="form-label">First Name <span class="required">*</span></label>
-              <input class="form-input" id="pax-first" placeholder="e.g. Vikram" value="${pax.firstName || ''}" required />
+          <!-- PASSENGER COUNT SELECTOR (1 to 5 Pax) -->
+          <div class="pax-count-selector mb-5">
+            <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
+              <label class="form-label font-bold" style="margin-bottom:0">Select Number of Passengers (1 to 5 Pax)</label>
+              <span class="badge badge-primary font-mono">${paxCount} Passenger${paxCount > 1 ? 's' : ''} Selected</span>
             </div>
-            <div class="form-group">
-              <label class="form-label">Last Name <span class="required">*</span></label>
-              <input class="form-input" id="pax-last" placeholder="e.g. Sarabhai" value="${pax.lastName || ''}" required />
+            <div class="pax-count-btns">
+              ${[1, 2, 3, 4, 5].map(n => `
+                <button type="button" class="pax-count-btn ${n === paxCount ? 'active' : ''}" onclick="window.setPassengerCount(${n})">
+                  ${n} Pax
+                </button>
+              `).join('')}
+            </div>
+            <div class="text-xs text-muted mt-2">
+              💡 Selecting ${paxCount} passenger${paxCount > 1 ? 's' : ''} will require choosing ${paxCount} seat${paxCount > 1 ? 's' : ''} on the cabin map in Step 2. Total fare = Base × ${paxCount} + Taxes & Surcharges.
             </div>
           </div>
 
-          <div class="form-row mb-5">
-            <div class="form-group">
-              <label class="form-label">Email Address <span class="required">*</span></label>
-              <input class="form-input" id="pax-email" type="email" placeholder="e.g. vikram.sarabhai@isro.gov.in" value="${pax.email || ''}" required />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Mobile Number <span class="required">*</span></label>
-              <div class="phone-input-group">
-                <select class="form-select phone-country-code" id="pax-country-code">
-                  <option value="+91" ${(!pax.phone || pax.phone.startsWith('+91')) ? 'selected' : ''}>🇮🇳 +91</option>
-                  <option value="+971" ${pax.phone?.startsWith('+971') ? 'selected' : ''}>🇦🇪 +971</option>
-                  <option value="+44" ${pax.phone?.startsWith('+44') ? 'selected' : ''}>🇬🇧 +44</option>
-                  <option value="+1" ${pax.phone?.startsWith('+1') ? 'selected' : ''}>🇺🇸 +1</option>
-                  <option value="+65" ${pax.phone?.startsWith('+65') ? 'selected' : ''}>🇸🇬 +65</option>
-                </select>
-                <input class="form-input" id="pax-phone" placeholder="9848022338" value="${(pax.phone || '').replace(/^\+\d+\s*/, '')}" required />
+          <!-- DYNAMIC PASSENGER INPUT BLOCKS -->
+          ${Array.from({ length: paxCount }, (_, idx) => {
+            const p = state.passengers[idx] || {};
+            const isIndian = (p.nationality || 'Indian') === 'Indian';
+            return `
+            <div class="pax-form-block" id="pax-block-${idx}">
+              <div class="pax-form-header">
+                <span class="pax-form-num">
+                  Passenger ${idx + 1} ${idx === 0 ? '<span class="badge badge-primary" style="font-size:11px;margin-left:6px">Lead Passenger</span>' : ''}
+                </span>
+                ${idx === 0 ? `
+                  <select class="form-select form-select-sm" style="max-width:280px" onchange="window.fillPassengerMulti(${idx}, this.value)">
+                    <option value="">— Quick fill demo profile —</option>
+                    ${dbPassengers.map(dp => `<option value="${dp.id}">${dp.firstName} ${dp.lastName} (${dp.nationality || 'Indian'})</option>`).join('')}
+                  </select>
+                ` : ''}
               </div>
-            </div>
-          </div>
 
-          <!-- Dynamic Nationality & Conditional ID Selector -->
-          <h4 class="mb-3 font-bold" style="font-size:1rem">Nationality & Identity Documentation</h4>
-          <div class="nationality-selector">
-            <label class="nationality-option ${isIndian ? 'selected' : ''}" id="nat-opt-indian" onclick="window.switchNationality('Indian')">
-              <input type="radio" name="nationality" value="Indian" ${isIndian ? 'checked' : ''} />
-              <div class="nationality-option-content">
-                <span class="nationality-option-title">🇮🇳 Indian Citizen (Default)</span>
-                <span class="nationality-option-desc">Requires Aadhaar Card (12-digit), Voter ID, DL, or Passport</span>
+              <!-- Row 1: Name, Age, Gender -->
+              <div class="form-row mb-3">
+                <div class="form-group" style="flex:2">
+                  <label class="form-label">Full Name <span class="required">*</span></label>
+                  <input class="form-input" id="pax-name-${idx}" placeholder="e.g. Vikram Sarabhai" value="${p.fullName || ''}" required />
+                </div>
+                <div class="form-group" style="flex:0.8">
+                  <label class="form-label">Age <span class="required">*</span></label>
+                  <input class="form-input" id="pax-age-${idx}" type="number" min="1" max="120" placeholder="28" value="${p.age || ''}" required />
+                </div>
+                <div class="form-group" style="flex:1">
+                  <label class="form-label">Gender <span class="required">*</span></label>
+                  <select class="form-select" id="pax-gender-${idx}">
+                    <option value="Male" ${(p.gender || 'Male') === 'Male' ? 'selected' : ''}>Male</option>
+                    <option value="Female" ${p.gender === 'Female' ? 'selected' : ''}>Female</option>
+                    <option value="Other" ${p.gender === 'Other' ? 'selected' : ''}>Other</option>
+                  </select>
+                </div>
               </div>
-            </label>
 
-            <label class="nationality-option ${!isIndian ? 'selected' : ''}" id="nat-opt-foreign" onclick="window.switchNationality('Foreign')">
-              <input type="radio" name="nationality" value="Foreign" ${!isIndian ? 'checked' : ''} />
-              <div class="nationality-option-content">
-                <span class="nationality-option-title">🌐 Non-Indian / Foreign National</span>
-                <span class="nationality-option-desc">Mandatory International Passport with Issuing Country & Expiry</span>
+              <!-- Nationality Selector Radio -->
+              <div class="nationality-selector mb-3">
+                <label class="nationality-option ${isIndian ? 'selected' : ''}" onclick="window.switchNationalityMulti(${idx}, 'Indian')">
+                  <input type="radio" name="nat-${idx}" value="Indian" ${isIndian ? 'checked' : ''} />
+                  <div class="nationality-option-content">
+                    <span class="nationality-option-title">🇮🇳 Indian Citizen (Default)</span>
+                    <span class="nationality-option-desc">Aadhaar Card (12-digit) / Voter ID / DL / Passport</span>
+                  </div>
+                </label>
+                <label class="nationality-option ${!isIndian ? 'selected' : ''}" onclick="window.switchNationalityMulti(${idx}, 'Foreign')">
+                  <input type="radio" name="nat-${idx}" value="Foreign" ${!isIndian ? 'checked' : ''} />
+                  <div class="nationality-option-content">
+                    <span class="nationality-option-title">🌐 International / Foreign National</span>
+                    <span class="nationality-option-desc">Mandatory International Passport with Country & Expiry</span>
+                  </div>
+                </label>
               </div>
-            </label>
-          </div>
 
-          <!-- Conditional Container: Indian Citizen ID -->
-          <div class="id-field-container" id="indian-id-section" style="${isIndian ? 'display:block' : 'display:none'}">
-            <div class="id-field-header">
-              <h4>🏛️ Government of India Identity Verification</h4>
-              <span class="id-validation-badge ${pax.idType === 'aadhaar' && pax.idNumber?.replace(/-/g, '').length === 12 ? 'valid' : 'pending'}" id="aadhaar-badge">
-                ${pax.idType === 'aadhaar' && pax.idNumber?.replace(/-/g, '').length === 12 ? '✓ 12-Digit Valid' : 'Aadhaar Live Verification'}
-              </span>
-            </div>
+              <!-- Indian Citizen ID Container -->
+              <div id="indian-id-${idx}" style="${isIndian ? 'display:block' : 'display:none'}">
+                <div class="form-row mb-3">
+                  <div class="form-group" style="flex:1">
+                    <label class="form-label">ID Type <span class="required">*</span></label>
+                    <select class="form-select" id="pax-idtype-${idx}">
+                      <option value="aadhaar" ${(!p.idType || p.idType === 'aadhaar') ? 'selected' : ''}>Aadhaar Card (12-digit)</option>
+                      <option value="voter" ${p.idType === 'voter' ? 'selected' : ''}>Voter ID (Election Card)</option>
+                      <option value="dl" ${p.idType === 'dl' ? 'selected' : ''}>Driving License</option>
+                      <option value="passport" ${p.idType === 'passport' ? 'selected' : ''}>Indian Passport</option>
+                    </select>
+                  </div>
+                  <div class="form-group" style="flex:2">
+                    <label class="form-label">ID Number <span class="required">*</span></label>
+                    <input class="form-input font-mono" id="pax-idnum-${idx}" placeholder="e.g. 8492-1049-5820" value="${p.idNumber || ''}" />
+                  </div>
+                </div>
+              </div>
 
-            <div class="form-row mb-3">
+              <!-- Foreign National ID Container -->
+              <div id="foreign-id-${idx}" style="${!isIndian ? 'display:block' : 'display:none'}">
+                <div class="form-row mb-3">
+                  <div class="form-group" style="flex:1.2">
+                    <label class="form-label">Passport Number <span class="required">*</span></label>
+                    <input class="form-input font-mono" id="pax-passport-${idx}" placeholder="e.g. N8291048" value="${p.passportNum || ''}" />
+                  </div>
+                  <div class="form-group" style="flex:1.2">
+                    <label class="form-label">Issuing Country <span class="required">*</span></label>
+                    <select class="form-select" id="pax-country-${idx}">
+                      <option value="United Arab Emirates" ${(p.issuingCountry || '') === 'United Arab Emirates' ? 'selected' : ''}>United Arab Emirates</option>
+                      <option value="United Kingdom" ${p.issuingCountry === 'United Kingdom' ? 'selected' : ''}>United Kingdom</option>
+                      <option value="United States" ${p.issuingCountry === 'United States' ? 'selected' : ''}>United States</option>
+                      <option value="Singapore" ${p.issuingCountry === 'Singapore' ? 'selected' : ''}>Singapore</option>
+                      <option value="Germany" ${p.issuingCountry === 'Germany' ? 'selected' : ''}>Germany</option>
+                      <option value="Australia" ${p.issuingCountry === 'Australia' ? 'selected' : ''}>Australia</option>
+                      <option value="Canada" ${p.issuingCountry === 'Canada' ? 'selected' : ''}>Canada</option>
+                    </select>
+                  </div>
+                  <div class="form-group" style="flex:1">
+                    <label class="form-label">Passport Expiry <span class="required">*</span></label>
+                    <input type="date" class="form-input" id="pax-expiry-${idx}" value="${p.passportExpiry || '2028-11-15'}" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Row 3: Meal Preference & Special Assistance -->
+              <div class="form-row mb-1">
+                <div class="form-group" style="flex:1">
+                  <label class="form-label">Meal Preference</label>
+                  <select class="form-select" id="pax-meal-${idx}">
+                    <option value="Standard Non-Veg" ${(p.mealPreference || 'Standard Non-Veg') === 'Standard Non-Veg' ? 'selected' : ''}>Standard Non-Veg</option>
+                    <option value="Asian Vegetarian" ${p.mealPreference === 'Asian Vegetarian' ? 'selected' : ''}>Asian Vegetarian (AVML)</option>
+                    <option value="Vegan" ${p.mealPreference === 'Vegan' ? 'selected' : ''}>Vegan (VGML)</option>
+                    <option value="Jain Special" ${p.mealPreference === 'Jain Special' ? 'selected' : ''}>Jain Special (VJML)</option>
+                    <option value="Diabetic Special" ${p.mealPreference === 'Diabetic Special' ? 'selected' : ''}>Diabetic Special (DBML)</option>
+                  </select>
+                </div>
+                <div class="form-group" style="flex:1">
+                  <label class="form-label">Special Assistance</label>
+                  <select class="form-select" id="pax-assist-${idx}">
+                    <option value="None" ${(p.specialAssistance || 'None') === 'None' ? 'selected' : ''}>None (No Assistance Required)</option>
+                    <option value="Wheelchair Assistance" ${p.specialAssistance === 'Wheelchair Assistance' ? 'selected' : ''}>Wheelchair Assistance (WCHR)</option>
+                    <option value="Medical Assistance" ${p.specialAssistance === 'Medical Assistance' ? 'selected' : ''}>Medical Assistance</option>
+                    <option value="Infant Traveling" ${p.specialAssistance === 'Infant Traveling' ? 'selected' : ''}>Infant Traveling (INF)</option>
+                  </select>
+                </div>
+              </div>
+            </div>`;
+          }).join('')}
+
+          <!-- Lead Contact Information -->
+          <div class="pax-form-block mt-4" style="background:#F8FAFC">
+            <h4 class="font-bold mb-3" style="font-size:0.95rem;color:var(--color-primary)">📱 Primary Booking Contact (E-Ticket & PNR Notification)</h4>
+            <div class="form-row">
+              <div class="form-group" style="flex:1.2">
+                <label class="form-label">Email Address <span class="required">*</span></label>
+                <input class="form-input" id="pax-email" type="email" placeholder="e.g. vikram.sarabhai@isro.gov.in" value="${state.passengerData?.email || 'contact@skyvoyage.io'}" required />
+              </div>
               <div class="form-group" style="flex:1">
-                <label class="form-label">ID Type <span class="required">*</span></label>
-                <select class="form-select" id="pax-idtype" onchange="window.handleIdTypeChange(this.value)">
-                  <option value="aadhaar" ${(!pax.idType || pax.idType === 'aadhaar') ? 'selected' : ''}>Aadhaar Card (12 Digits with Live Validation)</option>
-                  <option value="voter" ${pax.idType === 'voter' ? 'selected' : ''}>Voter ID (Election Card)</option>
-                  <option value="dl" ${pax.idType === 'dl' ? 'selected' : ''}>Driving License</option>
-                  <option value="passport" ${pax.idType === 'passport' ? 'selected' : ''}>Indian Passport</option>
-                </select>
-              </div>
-
-              <div class="form-group" style="flex:2">
-                <label class="form-label">ID Number <span class="required">*</span></label>
-                <input class="form-input font-mono" id="pax-idnum" placeholder="8492-1049-5820" value="${pax.idNumber || ''}" oninput="window.validateLiveId(this.value)" />
-                <div class="text-xs mt-1" id="id-helper-text" style="color:var(--color-text-secondary)">Strict 12-digit format enforced with auto-hyphenation.</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Conditional Container: Foreign National ID -->
-          <div class="id-field-container" id="foreign-id-section" style="${!isIndian ? 'display:block' : 'display:none'}">
-            <div class="id-field-header">
-              <h4>🛂 International Passport Verification (Mandatory)</h4>
-              <span class="badge badge-warning">Foreign National Protocol</span>
-            </div>
-
-            <div class="form-row mb-3">
-              <div class="form-group">
-                <label class="form-label">Passport Number <span class="required">*</span></label>
-                <input class="form-input font-mono" id="pax-passport-num" placeholder="e.g. N8291048" value="${pax.idType === 'passport' ? (pax.idNumber || '') : ''}" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Issuing Country <span class="required">*</span></label>
-                <select class="form-select" id="pax-issuing-country">
-                  <option value="United Arab Emirates" ${pax.issuingCountry === 'United Arab Emirates' ? 'selected' : ''}>United Arab Emirates</option>
-                  <option value="United Kingdom" ${pax.issuingCountry === 'United Kingdom' ? 'selected' : ''}>United Kingdom</option>
-                  <option value="United States" ${pax.issuingCountry === 'United States' ? 'selected' : ''}>United States</option>
-                  <option value="Singapore" ${pax.issuingCountry === 'Singapore' ? 'selected' : ''}>Singapore</option>
-                  <option value="Germany" ${pax.issuingCountry === 'Germany' ? 'selected' : ''}>Germany</option>
-                  <option value="Australia" ${pax.issuingCountry === 'Australia' ? 'selected' : ''}>Australia</option>
-                  <option value="Canada" ${pax.issuingCountry === 'Canada' ? 'selected' : ''}>Canada</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Passport Expiry Date <span class="required">*</span></label>
-                <input type="date" class="form-input" id="pax-passport-expiry" value="${pax.passportExpiry || '2028-11-15'}" />
+                <label class="form-label">Mobile Number <span class="required">*</span></label>
+                <div class="phone-input-group">
+                  <select class="form-select phone-country-code" id="pax-country-code">
+                    <option value="+91" ${(!state.passengerData?.phone || state.passengerData.phone.startsWith('+91')) ? 'selected' : ''}>🇮🇳 +91</option>
+                    <option value="+971" ${state.passengerData?.phone?.startsWith('+971') ? 'selected' : ''}>🇦🇪 +971</option>
+                    <option value="+44" ${state.passengerData?.phone?.startsWith('+44') ? 'selected' : ''}>🇬🇧 +44</option>
+                    <option value="+1" ${state.passengerData?.phone?.startsWith('+1') ? 'selected' : ''}>🇺🇸 +1</option>
+                    <option value="+65" ${state.passengerData?.phone?.startsWith('+65') ? 'selected' : ''}>🇸🇬 +65</option>
+                  </select>
+                  <input class="form-input" id="pax-phone" placeholder="9848022338" value="${(state.passengerData?.phone || '9848022338').replace(/^\+\d+\s*/, '')}" required />
+                </div>
               </div>
             </div>
           </div>
 
           <div class="flex justify-end mt-6">
-            <button class="btn btn-primary btn-lg" onclick="window.savePassengerAndProceed()">
-              Continue to Seat Selection →
+            <button class="btn btn-primary btn-lg" onclick="window.saveAllPassengersAndProceed()">
+              Continue to Seat Selection (${paxCount} Passenger${paxCount > 1 ? 's' : ''}) →
             </button>
           </div>
         </div>
       </div>
     `;
   } else if (step === 2) {
-    // ── STEP 2: INTERACTIVE SEAT MAP ──
+    // ── STEP 2: INTERACTIVE SEAT MAP & MULTI-SEAT ALLOCATION ──
     const seatMap = await getSeatMap(flight.id);
     const setDemo = await getSetTheoryDemo(flight.id);
     window.currentSeatMapDetails = seatMap.seatDetails || {};
+    const paxCount = state.passengerCount || 1;
+    const selectedCount = (state.selectedSeats || []).length;
+    const allSeatsAssigned = selectedCount === paxCount;
 
     return `
       <div class="card animate-in mb-6">
         <div class="card-header">
           <div>
-            <h3>Step 2: Select Your Seat (Cabin Map & Real-Time Telemetry)</h3>
-            <p class="text-sm text-muted">Passenger: <strong>${pax.firstName} ${pax.lastName}</strong> (${pax.nationality || 'Indian'} · ${(pax.idType || '').toUpperCase()}: ${pax.idNumber || ''})</p>
+            <h3>Step 2: Cabin Seat Selection (${selectedCount} of ${paxCount} Assigned)</h3>
+            <p class="text-sm text-muted">Assign dedicated seats for all ${paxCount} passenger${paxCount > 1 ? 's' : ''}. Selected seats are held under atomic TTL locks.</p>
           </div>
-          <span class="badge badge-success">DMGT Unit 2 Injection</span>
+          <span class="badge badge-success">DMGT Unit 2 Set Injection</span>
         </div>
         <div class="card-body">
 
@@ -1324,53 +1399,85 @@ async function renderCurrentBookingStep(step) {
               <div class="telemetry-pill-val">${seatMap.stats.booked}</div>
               <div class="telemetry-pill-lbl">Booked (Red)</div>
             </div>
-            <div class="telemetry-pill total">
-              <div class="telemetry-pill-val">${seatMap.stats.total}</div>
-              <div class="telemetry-pill-lbl">Total Capacity</div>
+          </div>
+
+          <!-- PASSENGER SEAT ALLOCATION STATUS BAR -->
+          <div class="pax-assignment-container" id="pax-assignment-container">
+            <div class="flex justify-between items-center mb-1">
+              <span class="font-bold text-sm" style="color:var(--color-primary-dark)">
+                💺 Passenger Seat Assignments (${selectedCount}/${paxCount})
+              </span>
+              <span class="badge ${allSeatsAssigned ? 'badge-success' : 'badge-warning'}">
+                ${allSeatsAssigned ? '✓ All Assigned' : `Assign ${paxCount - selectedCount} more`}
+              </span>
+            </div>
+            <div class="pax-assignment-grid">
+              ${Array.from({ length: paxCount }, (_, i) => {
+                const p = state.passengers[i] || {};
+                const name = p.fullName || `Passenger ${i + 1}`;
+                const seat = state.selectedSeats[i];
+                const isTarget = !seat && i === selectedCount;
+                return `
+                  <div class="pax-assignment-chip ${seat ? 'assigned' : isTarget ? 'active-target' : ''}">
+                    <div class="pax-chip-info">
+                      <span class="pax-chip-name">${name}</span>
+                      <span class="pax-chip-status">
+                        ${seat ? `${seat.class.toUpperCase()} Class · ₹${seat.price.toLocaleString()}` : isTarget ? '👉 Click green seat' : 'Pending'}
+                      </span>
+                    </div>
+                    <div>
+                      ${seat ? `
+                        <div class="flex items-center gap-1">
+                          <span class="pax-chip-badge badge badge-primary font-mono">${seat.seatNo}</span>
+                          <button class="btn btn-xs btn-ghost text-danger" onclick="window.removeSeatSelection('${seat.seatNo}')" title="Remove seat">✕</button>
+                        </div>
+                      ` : `
+                        <span class="badge badge-neutral text-xs font-mono">—</span>
+                      `}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
             </div>
           </div>
 
-          <!-- Live Occupant Inspector Status Bar -->
-          <div class="occupant-inspector-banner" id="occupant-inspector-live-bar">
-            <div class="flex items-center gap-2">
-              <span class="badge badge-neutral font-mono">OCCUPANT INSPECTOR</span>
-              <span id="inspector-bar-text" class="text-secondary">💡 Hover over or click any <strong>Red (Booked)</strong> or <strong>Orange (In-Progress)</strong> seat to inspect occupant details.</span>
+          <!-- Cabin Layout -->
+          <div class="seat-map-container">
+            <div class="seat-map-legend">
+              <span class="text-xs text-muted">Flight: <strong>${flight.flightNumber}</strong> · Aircraft: <strong>${flight.aircraft}</strong></span>
+              <div id="hold-timer-display"></div>
             </div>
-            <span class="text-xs font-mono text-muted">DBMS Real-Time Audit</span>
-          </div>
 
-          <div class="seat-map-container" style="position:relative">
-            <div class="aircraft-nose"></div>
-            <div class="aircraft-body">
+            <div class="seat-map-fuselage">
+              <div class="cockpit-icon">✈ COCKPIT</div>
+
               ${seatMap.sections.map(section => `
-                <div class="seat-section">
-                  <div class="seat-section-label">${section.class.toUpperCase()} CLASS</div>
-                  ${section.rows.map(row => {
-      const letters = section.class === 'first' ? ['A', '', '', '', '', 'F'] :
-        section.class === 'business' ? ['A', '', 'C', 'D', '', 'F'] :
-          ['A', 'B', 'C', 'D', 'E', 'F'];
-      return `
-                      <div class="seat-row">
-                        <span class="row-label">${row.rowNum}</span>
-                        ${letters.map((l, idx) => {
-        if (!l) return idx === 3 ? '<span class="aisle"></span>' : '';
-        const seat = row.cols[l];
-        if (!seat) return '';
-        const isSelected = state.selectedSeat?.seatNo === seat.seatNo;
-        const statusCls = isSelected ? 'selected' : seat.status;
-        const cls = `seat ${statusCls} ${section.class === 'first' ? 'first-class' : section.class === 'business' ? 'business-class' : ''}`;
+                <div class="cabin-section" data-class="${section.class}">
+                  <div class="cabin-section-header">
+                    <span>${section.name} Class</span>
+                    <span class="badge badge-neutral">₹${section.price.toLocaleString()}</span>
+                  </div>
+                  ${section.rows.map(row => `
+                    <div class="seat-row">
+                      <span class="row-num">${row.row}</span>
+                      ${['A', 'B', 'C', null, 'D', 'E', 'F'].map((l, idx) => {
+                        if (!l) return idx === 3 ? '<span class="aisle"></span>' : '';
+                        const seat = row.cols[l];
+                        if (!seat) return '';
+                        const isSelected = (state.selectedSeats || []).some(s => s.seatNo === seat.seatNo);
+                        const statusCls = isSelected ? 'selected' : seat.status;
+                        const cls = `seat ${statusCls} ${section.class === 'first' ? 'first-class' : section.class === 'business' ? 'business-class' : ''}`;
 
-        let seatEvents = '';
-        if (seat.status === 'available' || isSelected) {
-          seatEvents = `onclick="window.selectSeatInteractive('${seat.seatNo}', ${seat.price}, '${seat.class}')"`;
-        } else {
-          seatEvents = `onmouseenter="window.showSeatInspector(this, '${seat.seatNo}')" onmouseleave="window.hideSeatInspector()" onclick="window.inspectSeatModal('${seat.seatNo}')"`;
-        }
-        return `<div class="${cls}" data-seat="${seat.seatNo}" data-price="${seat.price}" data-class="${seat.class}" data-status="${seat.status}" ${seatEvents}>${seat.seatNo}</div>`;
-      }).join('')}
-                      </div>
-                    `;
-    }).join('')}
+                        let seatEvents = '';
+                        if (seat.status === 'available' || isSelected) {
+                          seatEvents = `onclick="window.selectSeatInteractive('${seat.seatNo}', ${seat.price}, '${seat.class}')"`;
+                        } else {
+                          seatEvents = `onmouseenter="window.showSeatInspector(this, '${seat.seatNo}')" onmouseleave="window.hideSeatInspector()" onclick="window.inspectSeatModal('${seat.seatNo}')"`;
+                        }
+                        return `<div class="${cls}" data-seat="${seat.seatNo}" data-price="${seat.price}" data-class="${seat.class}" data-status="${seat.status}" ${seatEvents}>${seat.seatNo}</div>`;
+                      }).join('')}
+                    </div>
+                  `).join('')}
                 </div>
               `).join('')}
             </div>
@@ -1396,35 +1503,72 @@ async function renderCurrentBookingStep(step) {
 
           <div class="flex justify-between mt-6">
             <button class="btn btn-secondary" onclick="window.goToBookingStep(1)">← Back to Passenger Details</button>
-            <button class="btn btn-primary btn-lg" id="proceed-to-payment-btn" onclick="window.proceedToPaymentGateway()" ${!state.selectedSeat ? 'disabled' : ''}>
-              ${state.selectedSeat ? `Proceed to Payment (₹${state.selectedSeat.price.toLocaleString()}) →` : 'Select a Seat to Continue'}
+            <button class="btn btn-primary btn-lg" id="proceed-to-payment-btn" onclick="window.proceedToPaymentGateway()" ${!allSeatsAssigned ? 'disabled' : ''}>
+              ${allSeatsAssigned
+                ? `Proceed to Payment (₹${(state.selectedSeats.reduce((s, x) => s + x.price, 0)).toLocaleString()} for ${paxCount} Pax) →`
+                : `Select ${paxCount - selectedCount} More Seat${paxCount - selectedCount > 1 ? 's' : ''} to Continue`}
             </button>
           </div>
         </div>
       </div>
     `;
   } else if (step === 3) {
-    // ── STEP 3: MULTI-CHANNEL PAYMENT GATEWAYS: CLEAN TABBED INTERFACE ──
-    const seat = state.selectedSeat;
-    const rawAmount = seat?.price || flight.basePrice;
+    // ── STEP 3: MULTI-CHANNEL PAYMENT GATEWAYS & ITEMIZED BREAKDOWN ──
+    const paxCount = state.passengerCount || 1;
+    const baseFareTotal = flight.basePrice * paxCount;
+    const seatFeesTotal = (state.selectedSeats || []).reduce((sum, s) => {
+      const extra = s.price - flight.basePrice;
+      return sum + (extra > 0 ? extra : 0);
+    }, 0);
+    const subtotal = (state.selectedSeats || []).reduce((sum, s) => sum + s.price, 0) || baseFareTotal;
+    const taxesAndSurcharges = Math.round(subtotal * 0.12);
     const comboDiscount = state.comboFareApplied ? 1500 : 0;
-    const amount = Math.max(1200, rawAmount - comboDiscount);
+    const grandTotal = Math.max(1200 * paxCount, subtotal + taxesAndSurcharges - comboDiscount);
 
     return `
       <div class="card animate-in">
         <div class="card-header">
           <div>
-            <h3>Step 3: Multi-Channel Payment Gateway</h3>
-            <p class="text-sm text-muted">Select your preferred payment channel. Transactions are committed inside DBMS ACID mutex locks.</p>
+            <h3>Step 3: Multi-Channel Payment Gateway & Itemized Receipt</h3>
+            <p class="text-sm text-muted">Complete payment for ${paxCount} passenger${paxCount > 1 ? 's' : ''}. ACID mutex transactions commit atomically in DBMS.</p>
           </div>
           <div class="text-right">
             ${state.comboFareApplied ? '<div class="text-xs text-success font-bold">Combo Discount -₹1,500 applied</div>' : ''}
-            <span class="badge badge-primary" style="font-size:1rem;padding:6px 14px">Total Payable: ₹${amount.toLocaleString()}</span>
+            <span class="badge badge-primary" style="font-size:1.05rem;padding:6px 14px">Total: ₹${grandTotal.toLocaleString()}</span>
           </div>
         </div>
         <div class="card-body">
 
-          <!-- Clean Tabbed Category Selector (No scrolling) -->
+          <!-- ITEMIZED PRICING RECEIPT CARD -->
+          <div class="price-breakdown-card">
+            <h4 class="font-bold text-sm mb-3" style="color:var(--color-primary)">🧾 Itemized Fare Breakdown (${paxCount} Passenger${paxCount > 1 ? 's' : ''})</h4>
+            <div class="price-breakdown-row">
+              <span>Base Airfare (₹${flight.basePrice.toLocaleString()} × ${paxCount})</span>
+              <span class="font-mono">₹${baseFareTotal.toLocaleString()}</span>
+            </div>
+            ${seatFeesTotal > 0 ? `
+              <div class="price-breakdown-row">
+                <span>Cabin Class & Seat Selection Upgrades</span>
+                <span class="font-mono">+₹${seatFeesTotal.toLocaleString()}</span>
+              </div>
+            ` : ''}
+            <div class="price-breakdown-row">
+              <span>Aviation Security Fee & Airport Surcharges (12% GST)</span>
+              <span class="font-mono">+₹${taxesAndSurcharges.toLocaleString()}</span>
+            </div>
+            ${comboDiscount > 0 ? `
+              <div class="price-breakdown-row text-success">
+                <span>Round-Trip Smart Combo Fare Discount</span>
+                <span class="font-mono">-₹1,500</span>
+              </div>
+            ` : ''}
+            <div class="price-breakdown-row total-row">
+              <span>Total Payable Amount</span>
+              <span class="font-mono">₹${grandTotal.toLocaleString()}</span>
+            </div>
+          </div>
+
+          <!-- Clean Tabbed Category Selector -->
           <div class="payment-category-tabs">
             <button type="button" class="payment-cat-btn active" id="paycat-upi" onclick="window.switchPaymentCategory('upi')">
               <span>⚡</span> UPI & QR Code
@@ -1453,7 +1597,7 @@ async function renderCurrentBookingStep(step) {
               </div>
 
               <div class="text-xs font-mono font-bold text-secondary mt-2">
-                VPA: <span id="active-vpa-display">skyvoyage@hdfcbank</span> · Amount: ₹${amount.toLocaleString()}
+                VPA: <span id="active-vpa-display">skyvoyage@hdfcbank</span> · Amount: ₹${grandTotal.toLocaleString()}
               </div>
 
               <div class="upi-apps-row mt-3">
@@ -1465,7 +1609,7 @@ async function renderCurrentBookingStep(step) {
 
               <div class="mt-4 flex gap-3 justify-center">
                 <button class="btn btn-primary" id="upi-simulate-btn" onclick="window.simulateUpiPayment()">
-                  ⚡ Simulate Scan-and-Pay Instant Approval
+                  ⚡ Simulate Scan-and-Pay Instant Approval (₹${grandTotal.toLocaleString()})
                 </button>
               </div>
             </div>
@@ -1495,21 +1639,20 @@ async function renderCurrentBookingStep(step) {
                 <input type="radio" name="netbank" value="ICICI" />
                 <div>
                   <div class="font-bold text-sm">ICICI Bank</div>
-                  <div class="text-xs text-muted">iMobile & Corporate NetBanking</div>
+                  <div class="text-xs text-muted">Corporate & Retail Banking</div>
                 </div>
               </label>
 
-              <label class="bank-radio-card" id="bank-card-axis" onclick="window.selectNetBank('AXIS')">
-                <input type="radio" name="netbank" value="AXIS" />
+              <label class="bank-radio-card" id="bank-card-axis" onclick="window.selectNetBank('Axis')">
+                <input type="radio" name="netbank" value="Axis" />
                 <div>
                   <div class="font-bold text-sm">Axis Bank</div>
-                  <div class="text-xs text-muted">Retail & NRI Internet Banking</div>
+                  <div class="text-xs text-muted">Instant Settlement</div>
                 </div>
               </label>
             </div>
 
-            <!-- 30+ Other Indian Banks Dropdown -->
-            <div class="form-group mt-4">
+            <div class="mt-4">
               <label class="form-label" style="font-weight:700">All Other Indian Banks (30+ Supported)</label>
               <select class="form-select" id="all-indian-banks-dropdown" onchange="window.selectOtherBank(this.value)">
                 <option value="">-- Choose from 30+ other Indian Banks --</option>
@@ -1523,27 +1666,6 @@ async function renderCurrentBookingStep(step) {
                 <option value="YES Bank">YES Bank</option>
                 <option value="Federal Bank">Federal Bank</option>
                 <option value="Indian Bank">Indian Bank</option>
-                <option value="Bank of India">Bank of India</option>
-                <option value="Central Bank of India">Central Bank of India</option>
-                <option value="Indian Overseas Bank">Indian Overseas Bank</option>
-                <option value="UCO Bank">UCO Bank</option>
-                <option value="Bank of Maharashtra">Bank of Maharashtra</option>
-                <option value="Punjab & Sind Bank">Punjab & Sind Bank</option>
-                <option value="RBL Bank">RBL Bank</option>
-                <option value="South Indian Bank">South Indian Bank</option>
-                <option value="Karur Vysya Bank">Karur Vysya Bank</option>
-                <option value="City Union Bank">City Union Bank</option>
-                <option value="Tamilnad Mercantile Bank">Tamilnad Mercantile Bank</option>
-                <option value="Bandhan Bank">Bandhan Bank</option>
-                <option value="AU Small Finance Bank">AU Small Finance Bank</option>
-                <option value="Equitas Small Finance Bank">Equitas Small Finance Bank</option>
-                <option value="Ujjivan Small Finance Bank">Ujjivan Small Finance Bank</option>
-                <option value="IDFC FIRST Bank">IDFC FIRST Bank</option>
-                <option value="Jammu & Kashmir Bank">Jammu & Kashmir Bank</option>
-                <option value="Karnataka Bank">Karnataka Bank</option>
-                <option value="Standard Chartered India">Standard Chartered India</option>
-                <option value="HSBC India">HSBC India</option>
-                <option value="Citibank India">Citibank India</option>
               </select>
               <div class="text-xs text-muted mt-1" id="selected-bank-status">Selected: <strong>State Bank of India (SBI)</strong></div>
             </div>
@@ -1568,7 +1690,7 @@ async function renderCurrentBookingStep(step) {
             <div class="form-row mb-4">
               <div class="form-group" style="flex:2">
                 <label class="form-label">Cardholder Name <span class="required">*</span></label>
-                <input class="form-input" id="card-name" placeholder="Name on card" value="${pax.firstName} ${pax.lastName}" />
+                <input class="form-input" id="card-name" placeholder="Name on card" value="${state.passengers[0]?.fullName || 'Cardholder'}" />
               </div>
               <div class="form-group" style="flex:1">
                 <label class="form-label">Expiry (MM/YY) <span class="required">*</span></label>
@@ -1630,7 +1752,7 @@ async function renderCurrentBookingStep(step) {
             </div>
           </div>
 
-          <!-- DMGT Logic Gate Propositional Review -->
+          <!-- DMGT Truth Verification -->
           <div class="mt-6 p-4" style="background:var(--color-bg);border-radius:var(--radius-xl);border:1px solid var(--color-border)">
             <div class="flex justify-between items-center mb-2">
               <span class="font-bold text-xs uppercase text-muted">Discrete Mathematics Truth Verification</span>
@@ -1639,7 +1761,7 @@ async function renderCurrentBookingStep(step) {
             <div class="grid grid-4 gap-2 text-xs">
               <div class="p-2 rounded bg-white border"><strong>P (Identity):</strong> <span class="text-success font-bold">TRUE ✓</span></div>
               <div class="p-2 rounded bg-white border"><strong>Q (Payment):</strong> <span class="text-success font-bold" id="gate-q-status">Authorized ✓</span></div>
-              <div class="p-2 rounded bg-white border"><strong>R (Seat Available):</strong> <span class="text-success font-bold">TRUE (${seat.seatNo})</span></div>
+              <div class="p-2 rounded bg-white border"><strong>R (${paxCount} Seats):</strong> <span class="text-success font-bold">TRUE (${(state.selectedSeats || []).map(s=>s.seatNo).join(', ')})</span></div>
               <div class="p-2 rounded bg-white border"><strong>S (Overbook):</strong> <span class="text-muted">FALSE (Not required)</span></div>
             </div>
           </div>
@@ -1647,38 +1769,55 @@ async function renderCurrentBookingStep(step) {
           <div class="flex justify-between items-center mt-6">
             <button class="btn btn-secondary" onclick="window.goToBookingStep(2)">← Back to Seat Selection</button>
             <button class="btn btn-primary btn-lg" id="confirm-payment-btn" onclick="window.executeFinalBooking()">
-              Confirm & Pay ₹${amount.toLocaleString()} →
+              Confirm & Pay ₹${grandTotal.toLocaleString()} →
             </button>
           </div>
         </div>
       </div>
     `;
   } else if (step === 4) {
-    // ── STEP 4: FINAL CONFIRMATION & AUTHENTIC PNR ISSUANCE ──
-    const lastBooking = state.lastConfirmedBooking || {};
-    const pnr = lastBooking.pnr || 'SK-894210';
+    // ── STEP 4: FINAL CONFIRMATION & MULTI-PASSENGER ISSUANCE ──
+    const bookings = state.confirmedBookings || (state.lastConfirmedBooking ? [state.lastConfirmedBooking] : []);
+    const paxCount = bookings.length || state.passengerCount || 1;
 
     return `
       <div class="card animate-in text-center" style="box-shadow:var(--shadow-xl)">
-        <div class="card-body" style="padding:var(--space-10) var(--space-6)">
-          <div style="font-size:4rem;margin-bottom:var(--space-3);animation:bounce 1s ease">🎉</div>
-          <h2 style="color:var(--color-success);font-weight:800;font-size:2rem;margin-bottom:var(--space-2)">Booking Successfully Confirmed!</h2>
-          <p class="text-muted" style="font-size:1.1rem;margin-bottom:var(--space-6)">
-            Seat status updated atomically in DBMS. Record indexed in ADSA B-Tree ($O(\\log n)$ traversal).
+        <div class="card-body" style="padding:var(--space-8) var(--space-6)">
+          <div style="font-size:3.5rem;margin-bottom:var(--space-2);animation:bounce 1s ease">🎉</div>
+          <h2 style="color:var(--color-success);font-weight:800;font-size:1.85rem;margin-bottom:var(--space-2)">
+            Booking Confirmed for ${paxCount} Passenger${paxCount > 1 ? 's' : ''}!
+          </h2>
+          <p class="text-muted" style="font-size:1rem;margin-bottom:var(--space-6);max-width:700px;margin-left:auto;margin-right:auto">
+            All seat assignments committed via ACID mutex locks. Records indexed in ADSA B-Tree (O(log n) search).
           </p>
 
-          <div style="background:var(--color-surface);border:2px dashed var(--color-primary);border-radius:var(--radius-2xl);padding:var(--space-6);display:inline-block;margin-bottom:var(--space-8);box-shadow:var(--shadow-md)">
-            <div class="text-muted text-xs font-bold uppercase tracking-wider mb-2">Authentic Passenger Name Record (PNR)</div>
-            <div style="font-size:2.75rem;font-weight:800;letter-spacing:0.15em;color:var(--color-primary);font-family:var(--font-mono)">${pnr}</div>
-            <div class="mt-3 flex gap-2 justify-center">
-              <span class="badge badge-success">ACID Committed ✓</span>
-              <span class="badge badge-primary font-mono">${flight.flightNumber} · Seat ${lastBooking.seatNo || state.selectedSeat?.seatNo || '12A'}</span>
-            </div>
+          <!-- MULTI-PASSENGER TICKET CARDS -->
+          <div class="multi-pax-tickets-grid">
+            ${bookings.map((b, idx) => `
+              <div class="multi-pax-ticket-card">
+                <div class="flex justify-between items-start mb-2">
+                  <div>
+                    <span class="badge badge-primary font-mono" style="font-size:12px">Passenger ${idx + 1}</span>
+                    <h4 class="font-bold mt-1" style="font-size:1.05rem;color:var(--color-text)">${b.passengerName}</h4>
+                  </div>
+                  <span class="badge badge-success">ACID Committed</span>
+                </div>
+                <div class="grid grid-2 gap-2 text-xs mb-3 font-mono" style="background:#F8FAFC;padding:8px 10px;border-radius:8px">
+                  <div><strong>PNR:</strong> <span class="text-primary font-bold">${b.pnr}</span></div>
+                  <div><strong>Seat:</strong> <span class="text-secondary font-bold">${b.seatNo} (${b.seatClass || 'Economy'})</span></div>
+                  <div><strong>Flight:</strong> ${flight.flightNumber}</div>
+                  <div><strong>Meal:</strong> ${b.mealPreference || 'Standard'}</div>
+                </div>
+                <button class="btn btn-secondary btn-sm w-full" onclick="window.showETicketModal('${b.pnr}')">
+                  🖨️ View Boarding Pass
+                </button>
+              </div>
+            `).join('')}
           </div>
 
-          <div class="flex gap-4 justify-center flex-wrap">
-            <button class="btn btn-primary btn-lg" onclick="window.showETicketModal('${pnr}')">
-              🖨️ View & Print Boarding Pass
+          <div class="flex gap-4 justify-center flex-wrap mt-6">
+            <button class="btn btn-primary btn-lg" onclick="window.showETicketModal('all')">
+              🖨️ View & Print All Boarding Passes
             </button>
             <a href="#/bookings" class="btn btn-secondary btn-lg">
               🎫 Go to My Bookings
@@ -1698,14 +1837,15 @@ window.goToBookingStep = async (targetStep) => {
   if (targetStep === 1) {
     state.bookingStep = 1;
   } else if (targetStep === 2) {
-    if (!state.passengerData?.firstName) {
+    if (!state.passengerData?.fullName && (!state.passengers || !state.passengers[0]?.fullName)) {
       showToast('Validation', 'Please complete passenger details first', 'warning');
       return;
     }
     state.bookingStep = 2;
   } else if (targetStep === 3) {
-    if (!state.selectedSeat) {
-      showToast('Validation', 'Please select a seat first', 'warning');
+    const paxCount = state.passengerCount || 1;
+    if ((state.selectedSeats || []).length < paxCount) {
+      showToast('Validation', `Please select all ${paxCount} seats first`, 'warning');
       return;
     }
     state.bookingStep = 3;
@@ -1730,242 +1870,183 @@ function updateStepsHeaderUI(currentStep) {
   }
 }
 
-// ── Step 1 Handlers: Nationality & Conditional ID Verification ──
-window.switchNationality = (nat) => {
+// ── Multi-Passenger Count & Form Handlers ──
+
+window.setPassengerCount = async (count) => {
+  state.passengerCount = count;
+  while (state.passengers.length < count) {
+    state.passengers.push({
+      id: generateId('pax'),
+      fullName: '',
+      age: '',
+      gender: 'Male',
+      nationality: 'Indian',
+      idType: 'aadhaar',
+      idNumber: '',
+      mealPreference: 'Standard Non-Veg',
+      specialAssistance: 'None'
+    });
+  }
+  state.passengers = state.passengers.slice(0, count);
+  state.selectedSeats = [];
+  state.selectedSeat = null;
+  const content = document.getElementById('booking-step-content');
+  if (content) {
+    content.innerHTML = await renderCurrentBookingStep(1);
+  }
+};
+
+window.switchNationalityMulti = (idx, nat) => {
+  if (!state.passengers[idx]) state.passengers[idx] = {};
+  state.passengers[idx].nationality = nat;
   const isIndian = nat === 'Indian';
-  document.getElementById('nat-opt-indian')?.classList.toggle('selected', isIndian);
-  document.getElementById('nat-opt-foreign')?.classList.toggle('selected', !isIndian);
-
-  const indianRadio = document.querySelector('input[name="nationality"][value="Indian"]');
-  const foreignRadio = document.querySelector('input[name="nationality"][value="Foreign"]');
-  if (indianRadio) indianRadio.checked = isIndian;
-  if (foreignRadio) foreignRadio.checked = !isIndian;
-
-  const indianSec = document.getElementById('indian-id-section');
-  const foreignSec = document.getElementById('foreign-id-section');
+  const indianSec = document.getElementById(`indian-id-${idx}`);
+  const foreignSec = document.getElementById(`foreign-id-${idx}`);
   if (indianSec) indianSec.style.display = isIndian ? 'block' : 'none';
   if (foreignSec) foreignSec.style.display = !isIndian ? 'block' : 'none';
 
-  if (!state.passengerData) state.passengerData = {};
-  state.passengerData.nationality = nat;
-};
-
-window.handleIdTypeChange = (idType) => {
-  const badge = document.getElementById('aadhaar-badge');
-  const helper = document.getElementById('id-helper-text');
-  const input = document.getElementById('pax-idnum');
-
-  if (idType === 'aadhaar') {
-    if (badge) badge.textContent = 'Aadhaar Live Verification';
-    if (helper) helper.textContent = 'Strict 12-digit format enforced with auto-hyphenation.';
-    if (input) input.placeholder = '8492-1049-5820';
-  } else if (idType === 'voter') {
-    if (badge) badge.textContent = 'Voter ID Verification';
-    if (helper) helper.textContent = 'Format: 3 letters followed by 7 digits (e.g. VTR8492018).';
-    if (input) input.placeholder = 'VTR8492018';
-  } else if (idType === 'dl') {
-    if (badge) badge.textContent = 'Driving License';
-    if (helper) helper.textContent = 'Valid state driving license number.';
-    if (input) input.placeholder = 'DL-1420110012345';
-  } else if (idType === 'passport') {
-    if (badge) badge.textContent = 'Indian Passport';
-    if (helper) helper.textContent = '1 alphabet followed by 7 numbers (e.g. J8765432).';
-    if (input) input.placeholder = 'J8765432';
+  const block = document.getElementById(`pax-block-${idx}`);
+  if (block) {
+    block.querySelectorAll('.nationality-option').forEach((opt, i) => {
+      opt.classList.toggle('selected', (i === 0 && isIndian) || (i === 1 && !isIndian));
+    });
   }
 };
 
-window.validateLiveId = (val) => {
-  const idType = document.getElementById('pax-idtype')?.value || 'aadhaar';
-  const badge = document.getElementById('aadhaar-badge');
-  const input = document.getElementById('pax-idnum');
-
-  if (idType === 'aadhaar') {
-    // Auto format XXXX-XXXX-XXXX
-    let raw = val.replace(/\D/g, '').slice(0, 12);
-    let formatted = '';
-    for (let i = 0; i < raw.length; i++) {
-      if (i > 0 && i % 4 === 0) formatted += '-';
-      formatted += raw[i];
-    }
-    if (input && input.value !== formatted) input.value = formatted;
-
-    if (badge) {
-      if (raw.length === 12) {
-        badge.className = 'id-validation-badge valid';
-        badge.innerHTML = '✓ Valid 12-Digit Aadhaar';
-      } else {
-        badge.className = 'id-validation-badge invalid';
-        badge.innerHTML = `⚠️ ${12 - raw.length} digits required`;
-      }
-    }
-  } else {
-    if (badge) {
-      badge.className = val.trim().length >= 6 ? 'id-validation-badge valid' : 'id-validation-badge pending';
-      badge.innerHTML = val.trim().length >= 6 ? '✓ Format OK' : 'Checking format...';
-    }
-  }
-};
-
-window.fillPassenger = async (paxId) => {
+window.fillPassengerMulti = async (idx, paxId) => {
   if (!paxId) return;
   const pax = await get('passengers', paxId);
   if (!pax) return;
-
-  state.passengerData = { ...pax };
-  const first = document.getElementById('pax-first');
-  const last = document.getElementById('pax-last');
-  const email = document.getElementById('pax-email');
-  const phone = document.getElementById('pax-phone');
-
-  if (first) first.value = pax.firstName || '';
-  if (last) last.value = pax.lastName || '';
-  if (email) email.value = pax.email || '';
-  if (phone) phone.value = (pax.phone || '').replace(/^\+\d+\s*/, '');
-
-  window.switchNationality(pax.nationality || 'Indian');
-
-  if (pax.nationality === 'Foreign') {
-    const passNum = document.getElementById('pax-passport-num');
-    const country = document.getElementById('pax-issuing-country');
-    const exp = document.getElementById('pax-passport-expiry');
-    if (passNum) passNum.value = pax.idNumber || '';
-    if (country) country.value = pax.issuingCountry || 'United Kingdom';
-    if (exp) exp.value = pax.passportExpiry || '2028-11-15';
-  } else {
-    const idTypeEl = document.getElementById('pax-idtype');
-    const idNumEl = document.getElementById('pax-idnum');
-    if (idTypeEl) idTypeEl.value = pax.idType || 'aadhaar';
-    if (idNumEl) {
-      idNumEl.value = pax.idNumber || '';
-      window.validateLiveId(pax.idNumber || '');
-    }
-  }
+  state.passengers[idx] = {
+    fullName: `${pax.firstName} ${pax.lastName}`,
+    age: pax.age || 30,
+    gender: pax.gender || 'Male',
+    nationality: pax.nationality || 'Indian',
+    idType: pax.idType || 'aadhaar',
+    idNumber: pax.idNumber || '',
+    passportNum: pax.idType === 'passport' ? pax.idNumber : '',
+    passportExpiry: pax.passportExpiry || '2028-11-15',
+    issuingCountry: pax.issuingCountry || 'India',
+    mealPreference: pax.mealPreference || 'Standard Non-Veg',
+    specialAssistance: pax.specialAssistance || 'None',
+    tier: pax.tier || 'gold',
+    id: pax.id,
+  };
+  const nameEl = document.getElementById(`pax-name-${idx}`);
+  const ageEl = document.getElementById(`pax-age-${idx}`);
+  const genderEl = document.getElementById(`pax-gender-${idx}`);
+  const idTypeEl = document.getElementById(`pax-idtype-${idx}`);
+  const idNumEl = document.getElementById(`pax-idnum-${idx}`);
+  if (nameEl) nameEl.value = state.passengers[idx].fullName;
+  if (ageEl) ageEl.value = state.passengers[idx].age;
+  if (genderEl) genderEl.value = state.passengers[idx].gender;
+  if (idTypeEl) idTypeEl.value = state.passengers[idx].idType;
+  if (idNumEl) idNumEl.value = state.passengers[idx].idNumber;
+  window.switchNationalityMulti(idx, state.passengers[idx].nationality);
+  showToast('Profile Loaded', `Passenger ${idx + 1}: ${state.passengers[idx].fullName}`, 'success');
 };
 
-window.savePassengerAndProceed = () => {
-  const firstName = document.getElementById('pax-first')?.value.trim();
-  const lastName = document.getElementById('pax-last')?.value.trim();
+window.saveAllPassengersAndProceed = () => {
+  const count = state.passengerCount || 1;
   const email = document.getElementById('pax-email')?.value.trim();
-  const countryCode = document.getElementById('pax-country-code')?.value || '+91';
-  const phoneRaw = document.getElementById('pax-phone')?.value.trim();
-  const nationality = document.querySelector('input[name="nationality"]:checked')?.value || 'Indian';
+  const phone = document.getElementById('pax-phone')?.value.trim();
+  const code = document.getElementById('pax-country-code')?.value || '+91';
 
-  if (!firstName || !lastName) {
-    showToast('Validation Error', 'First name and last name are required.', 'warning');
-    return;
-  }
   if (!email || !email.includes('@')) {
-    showToast('Validation Error', 'Please enter a valid email address.', 'warning');
+    showToast('Validation Error', 'Valid primary email address is required', 'warning');
     return;
   }
-  if (!phoneRaw || phoneRaw.length < 7) {
-    showToast('Validation Error', 'Please enter a valid mobile number.', 'warning');
+  if (!phone || phone.length < 7) {
+    showToast('Validation Error', 'Valid mobile number is required', 'warning');
     return;
   }
 
-  let idType, idNumber, issuingCountry = null, passportExpiry = null;
+  for (let i = 0; i < count; i++) {
+    const fullName = document.getElementById(`pax-name-${i}`)?.value.trim();
+    const age = document.getElementById(`pax-age-${i}`)?.value.trim();
+    const gender = document.getElementById(`pax-gender-${i}`)?.value || 'Male';
+    const nat = document.querySelector(`input[name="nat-${i}"]:checked`)?.value || 'Indian';
+    const mealPreference = document.getElementById(`pax-meal-${i}`)?.value || 'Standard Non-Veg';
+    const specialAssistance = document.getElementById(`pax-assist-${i}`)?.value || 'None';
 
-  if (nationality === 'Indian') {
-    idType = document.getElementById('pax-idtype')?.value || 'aadhaar';
-    idNumber = document.getElementById('pax-idnum')?.value.trim();
+    if (!fullName || fullName.length < 2) {
+      showToast('Validation Error', `Passenger ${i + 1}: Please enter full name`, 'warning');
+      return;
+    }
+    if (!age || parseInt(age) < 1 || parseInt(age) > 120) {
+      showToast('Validation Error', `Passenger ${i + 1}: Please enter a valid age (1-120)`, 'warning');
+      return;
+    }
 
-    if (idType === 'aadhaar') {
-      const digitsOnly = idNumber.replace(/\D/g, '');
-      if (digitsOnly.length !== 12) {
-        showToast('Aadhaar Validation', 'Aadhaar Card must contain exactly 12 numeric digits.', 'error');
+    let idType, idNumber, passportNum, passportExpiry, issuingCountry;
+    if (nat === 'Indian') {
+      idType = document.getElementById(`pax-idtype-${i}`)?.value || 'aadhaar';
+      idNumber = document.getElementById(`pax-idnum-${i}`)?.value.trim();
+      if (!idNumber || idNumber.length < 5) {
+        showToast('ID Required', `Passenger ${i + 1}: Valid Indian ID number required`, 'warning');
         return;
       }
     } else {
-      if (!idNumber || idNumber.length < 5) {
-        showToast('ID Validation', 'Please enter a valid Government ID number.', 'warning');
+      idType = 'passport';
+      passportNum = document.getElementById(`pax-passport-${i}`)?.value.trim();
+      issuingCountry = document.getElementById(`pax-country-${i}`)?.value || 'United Arab Emirates';
+      passportExpiry = document.getElementById(`pax-expiry-${i}`)?.value || '2028-11-15';
+      if (!passportNum || passportNum.length < 5) {
+        showToast('Passport Required', `Passenger ${i + 1}: Valid international passport number required`, 'warning');
         return;
       }
+      idNumber = passportNum;
     }
-  } else {
-    idType = 'passport';
-    idNumber = document.getElementById('pax-passport-num')?.value.trim();
-    issuingCountry = document.getElementById('pax-issuing-country')?.value;
-    passportExpiry = document.getElementById('pax-passport-expiry')?.value;
 
-    if (!idNumber || idNumber.length < 6) {
-      showToast('Passport Required', 'Passport Number is strictly mandatory for foreign nationals.', 'error');
-      return;
-    }
-    if (!passportExpiry) {
-      showToast('Passport Expiry', 'Passport Expiry Date is strictly mandatory.', 'error');
-      return;
-    }
-    const expDate = new Date(passportExpiry);
-    if (expDate <= new Date()) {
-      showToast('Passport Invalid', 'Passport expiry date must be in the future.', 'error');
-      return;
-    }
+    const nameParts = fullName.split(' ');
+    state.passengers[i] = {
+      ...state.passengers[i],
+      id: state.passengers[i]?.id || generateId('pax'),
+      fullName,
+      firstName: nameParts[0],
+      lastName: nameParts.slice(1).join(' ') || nameParts[0],
+      age: parseInt(age),
+      gender,
+      nationality: nat,
+      idType,
+      idNumber,
+      passportNum,
+      passportExpiry,
+      issuingCountry,
+      mealPreference,
+      specialAssistance,
+      email,
+      phone: `${code} ${phone}`
+    };
   }
 
+  // Sync state.passengerData for backward compatibility
   state.passengerData = {
-    id: state.passengerData?.id || generateId('pax'),
-    firstName, lastName, email,
-    phone: `${countryCode} ${phoneRaw}`,
-    nationality, idType, idNumber,
-    issuingCountry, passportExpiry,
-    tier: state.passengerData?.tier || 'gold',
+    ...state.passengers[0],
+    email,
+    phone: `${code} ${phone}`
   };
 
-  showToast('Identity Verified ✓', `${firstName} ${lastName} (${nationality}) identity logged`, 'success');
-
-  // Advance to Step 2: Seat Map
+  showToast('Verified ✓', `${count} Passenger${count > 1 ? 's' : ''} details verified`, 'success');
   window.goToBookingStep(2);
 };
 
-// ── Step 2 Handlers: Interactive Seat Map & Occupant Hover Inspector ──
+// ── Seat Selection & Telemetry Handlers ──
 
-// Floating Seat Inspector Tooltip
 window.showSeatInspector = (el, seatNo) => {
   window.hideSeatInspector();
-  const seat = window.currentSeatMapDetails?.[seatNo] || {};
-  const isBooked = seat.status === 'booked';
-  const isHeld = seat.status === 'held';
-
-  const barText = document.getElementById('inspector-bar-text');
+  const seat = window.currentSeatMapDetails?.[seatNo];
+  if (!seat) return;
 
   const tooltip = document.createElement('div');
-  tooltip.className = 'seat-occupant-tooltip';
   tooltip.id = 'active-seat-tooltip';
-
-  if (isBooked) {
-    const occupant = seat.occupant || {
-      name: 'Rajesh S.',
-      pnr: 'SK-92184',
-      status: 'Confirmed',
-      meal: 'Asian Vegetarian'
-    };
-    tooltip.innerHTML = `
-      <div style="font-weight:800;color:#F87171;margin-bottom:2px">🔴 Booked / Confirmed Seat ${seatNo}</div>
-      <div>👤 Passenger: <strong>${occupant.name}</strong></div>
-      <div>🎫 PNR: <strong>${occupant.pnr}</strong></div>
-      <div>🍽️ Meal: <strong>${occupant.meal}</strong></div>
-      <div style="font-size:10px;color:#94A3B8;margin-top:2px">Click seat to inspect full dossier</div>
-    `;
-    if (barText) {
-      barText.innerHTML = `🔴 <strong>Seat ${seatNo}</strong> Booked by <strong>${occupant.name}</strong> (PNR: <code>${occupant.pnr}</code>, Meal: ${occupant.meal}, Status: ${occupant.status})`;
-    }
-  } else if (isHeld) {
-    const timerText = seat.holdInfo?.timerText || 'Held by checkout session • Expires in 04:12 min';
-    tooltip.innerHTML = `
-      <div style="font-weight:800;color:#FBBF24;margin-bottom:2px">🟠 Temporary Seat Hold (In Progress)</div>
-      <div>⏳ ${timerText}</div>
-      <div style="font-size:10px;color:#94A3B8;margin-top:2px">Locked under active ACID checkout session</div>
-    `;
-    if (barText) {
-      barText.innerHTML = `🟠 <strong>Seat ${seatNo}</strong> ${timerText} (Pessimistic Mutex Lock Active)`;
-    }
-  } else {
-    tooltip.innerHTML = `
-      <div style="font-weight:800;color:#34D399">🟢 Available Seat ${seatNo}</div>
-      <div>Price: <strong>₹${(seat.price || 0).toLocaleString()}</strong> (${seat.class || 'Economy'})</div>
-      <div style="font-size:10px;color:#94A3B8">Click to hold for 10 minutes</div>
-    `;
-  }
+  tooltip.className = 'seat-inspector-tooltip';
+  tooltip.innerHTML = `
+    <div style="font-weight:700;font-size:11px;margin-bottom:2px">Seat ${seatNo} (${seat.class.toUpperCase()})</div>
+    <div style="font-size:10px;color:var(--color-text-secondary)">Status: <strong>${seat.status.toUpperCase()}</strong></div>
+    ${seat.status === 'booked' ? `<div style="font-size:10px;color:var(--color-danger)">Occupied · Click for dossier</div>` : ''}
+    ${seat.status === 'held' ? `<div style="font-size:10px;color:var(--color-warning)">Lock TTL: active</div>` : ''}
+  `;
 
   el.style.position = 'relative';
   el.appendChild(tooltip);
@@ -1979,245 +2060,278 @@ window.inspectSeatModal = (seatNo) => {
   const seat = window.currentSeatMapDetails?.[seatNo] || {};
   if (seat.status === 'booked') {
     const occupant = seat.occupant || { name: 'Rajesh S.', pnr: 'SK-92184', status: 'Confirmed', meal: 'Asian Vegetarian' };
-    showToast(`Seat ${seatNo} Dossier`, `Passenger: ${occupant.name} | PNR: ${occupant.pnr} | Meal: ${occupant.meal} | Status: Confirmed`, 'info');
+    showToast(`Seat ${seatNo} Dossier`, `Passenger: ${occupant.name} | PNR: ${occupant.pnr} | Status: Confirmed`, 'info');
+    window.showSeatWatchAlert(seatNo);
   } else if (seat.status === 'held') {
     const timerText = seat.holdInfo?.timerText || 'Held by checkout session • Expires in 04:12 min';
     showToast(`Seat ${seatNo} Hold`, `${timerText} | Mutex: seat:${state.selectedFlight?.id}:${seatNo}`, 'warning');
+    window.showSeatWatchAlert(seatNo);
   }
+};
+
+window.showSeatWatchAlert = (seatNo) => {
+  const isWindow = seatNo.endsWith('A') || seatNo.endsWith('F');
+  const alertMsg = isWindow
+    ? `Window Seat ${seatNo} is currently locked by another passenger.`
+    : `Seat ${seatNo} is currently unavailable under active session mutex.`;
+
+  document.getElementById('seatwatch-alert')?.remove();
+
+  const alertHtml = document.createElement('div');
+  alertHtml.id = 'seatwatch-alert';
+  alertHtml.className = 'seatwatch-alert-card';
+  alertHtml.innerHTML = `
+    <div class="seatwatch-alert-content">
+      <div class="seatwatch-icon">👁️</div>
+      <div>
+        <div class="font-bold" style="margin-bottom:4px">${alertMsg}</div>
+        <div class="text-sm text-muted">Would you like to set a SeatWatch alert? If this seat is released by timeout or cancellation, you will receive an instant 60-second priority claim notification.</div>
+      </div>
+    </div>
+    <div class="seatwatch-actions">
+      <button class="btn btn-primary btn-sm" onclick="window.enableSeatWatch('${seatNo}')">👁️ Enable SeatWatch Alert</button>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('seatwatch-alert')?.remove()">Dismiss</button>
+    </div>
+  `;
+
+  const container = document.querySelector('.seat-map-container');
+  if (container) container.parentElement.insertBefore(alertHtml, container.nextSibling);
+};
+
+window.enableSeatWatch = (seatNo) => {
+  document.getElementById('seatwatch-alert')?.remove();
+  showToast('SeatWatch Active 👁️', `Monitoring seat ${seatNo}. You'll receive a 60-second priority claim if it opens.`, 'success');
 };
 
 window.selectSeatInteractive = async (seatNo, price, seatClass) => {
   const flight = state.selectedFlight;
-  const paxId = state.passengerData?.id || 'holder_guest';
+  const paxCount = state.passengerCount || 1;
+  if (!state.selectedSeats) state.selectedSeats = [];
 
-  // Deselect previous
-  document.querySelectorAll('.seat.selected').forEach(s => {
-    s.classList.remove('selected');
-    s.classList.add('available');
-  });
+  const existingIdx = state.selectedSeats.findIndex(s => s.seatNo === seatNo);
+  if (existingIdx >= 0) {
+    state.selectedSeats.splice(existingIdx, 1);
+    await releaseSeatHold(flight.id, seatNo, state.session_hold_id);
+    showToast('Seat Deselected', `Seat ${seatNo} unassigned`, 'info');
+  } else {
+    if (state.selectedSeats.length >= paxCount) {
+      showToast('Seat Limit Reached', `All ${paxCount} seats already selected. Click an assigned seat to change it.`, 'warning');
+      return;
+    }
+    const paxIdx = state.selectedSeats.length;
+    const paxName = state.passengers[paxIdx]?.fullName || `Passenger ${paxIdx + 1}`;
+    state.selectedSeats.push({ seatNo, price, class: seatClass, passengerIndex: paxIdx });
 
-  // Select clicked
-  const seatEl = document.querySelector(`.seat[data-seat="${seatNo}"]`);
-  if (seatEl) {
-    seatEl.classList.remove('available');
-    seatEl.classList.add('selected');
+    const holdRes = await holdSeat(flight.id, seatNo, state.passengers[paxIdx]?.id || state.session_hold_id, state.session_hold_id);
+    if (holdRes.success) {
+      state.holdId = holdRes.holdId;
+      startHoldTimer(holdRes.expiresAt);
+    }
+    showToast('Seat Assigned ✓', `Seat ${seatNo} (${seatClass}) assigned to ${paxName}`, 'success');
   }
 
-  state.selectedSeat = { seatNo, price, class: seatClass };
+  state.selectedSeat = state.selectedSeats[0] || null;
 
-  // Place lock with 10-minute hold TTL and persistent session hold token
-  const holdResult = await holdSeat(flight.id, seatNo, paxId, state.session_hold_id);
-  if (holdResult.success) {
-    state.holdId = holdResult.holdId;
-    showToast('Seat Held', `Seat ${seatNo} reserved for 10 minutes under session token`, 'success');
-    startHoldTimer(holdResult.expiresAt);
+  const content = document.getElementById('booking-step-content');
+  if (content) {
+    content.innerHTML = await renderCurrentBookingStep(2);
   }
+};
 
-  // Enable payment button
-  const btn = document.getElementById('proceed-to-payment-btn');
-  if (btn) {
-    btn.disabled = false;
-    btn.innerHTML = `Proceed to Payment (₹${price.toLocaleString()}) →`;
-  }
-
-  // Refresh summary panel
-  const summaryCard = document.getElementById('booking-summary-card');
-  if (summaryCard) {
-    const nowBookingPage = await renderBookingPage();
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = nowBookingPage;
-    const newSummary = tempDiv.querySelector('#booking-summary-card');
-    if (newSummary) summaryCard.innerHTML = newSummary.innerHTML;
+window.removeSeatSelection = async (seatNo) => {
+  const flight = state.selectedFlight;
+  const existingIdx = (state.selectedSeats || []).findIndex(s => s.seatNo === seatNo);
+  if (existingIdx >= 0) {
+    state.selectedSeats.splice(existingIdx, 1);
+    state.selectedSeat = state.selectedSeats[0] || null;
+    await releaseSeatHold(flight.id, seatNo, state.session_hold_id);
+    const content = document.getElementById('booking-step-content');
+    if (content) {
+      content.innerHTML = await renderCurrentBookingStep(2);
+    }
   }
 };
 
 window.proceedToPaymentGateway = () => {
-  if (!state.selectedSeat) {
-    showToast('Seat Required', 'Please click on an available seat first', 'warning');
+  const paxCount = state.passengerCount || 1;
+  if ((state.selectedSeats || []).length < paxCount) {
+    showToast('Select Seats', `Please select all ${paxCount} seats before proceeding`, 'warning');
     return;
   }
   window.goToBookingStep(3);
   setTimeout(() => {
-    window.renderDynamicUpiCanvas('skyvoyage@hdfcbank', state.selectedSeat?.price || 3500);
+    const subtotal = (state.selectedSeats || []).reduce((sum, s) => sum + s.price, 0);
+    const taxes = Math.round(subtotal * 0.12);
+    const discount = state.comboFareApplied ? 1500 : 0;
+    const grand = Math.max(1200 * paxCount, subtotal + taxes - discount);
+    window.renderDynamicUpiCanvas('skyvoyage@hdfcbank', grand);
   }, 100);
 };
 
-// ── Step 3 Handlers: Clean Tabbed Payment Gateways ──
+// ── Payment Gateway Handlers ──
 
 window.switchPaymentCategory = (cat) => {
-  const categories = ['upi', 'netbanking', 'card', 'wallets'];
-  categories.forEach(c => {
-    const btn = document.getElementById(`paycat-${c}`);
-    const panel = document.getElementById(`payment-panel-${c}`);
-    if (btn) btn.classList.toggle('active', c === cat);
-    if (panel) panel.style.display = c === cat ? 'block' : 'none';
-  });
+  document.querySelectorAll('.payment-cat-btn').forEach(btn => btn.classList.remove('active'));
+  document.getElementById(`paycat-${cat}`)?.classList.add('active');
+
+  document.querySelectorAll('.payment-panel').forEach(p => p.style.display = 'none');
+  const panel = document.getElementById(`payment-panel-${cat}`);
+  if (panel) panel.style.display = 'block';
 
   if (cat === 'upi') {
-    setTimeout(() => {
-      window.renderDynamicUpiCanvas('skyvoyage@hdfcbank', state.selectedSeat?.price || 3500);
-    }, 50);
+    const paxCount = state.passengerCount || 1;
+    const subtotal = (state.selectedSeats || []).reduce((sum, s) => sum + s.price, 0) || (state.selectedFlight.basePrice * paxCount);
+    const grand = Math.max(1200 * paxCount, subtotal + Math.round(subtotal * 0.12) - (state.comboFareApplied ? 1500 : 0));
+    window.renderDynamicUpiCanvas('skyvoyage@hdfcbank', grand);
   }
 };
 
 window.selectUpiApp = (app) => {
-  ['gpay', 'phonepe', 'paytm', 'bhim'].forEach(a => {
-    document.getElementById(`upi-app-${a}`)?.classList.toggle('active', a === app);
-  });
+  document.querySelectorAll('.upi-app-badge').forEach(b => b.classList.remove('active'));
+  document.getElementById(`upi-app-${app}`)?.classList.add('active');
 
-  const vpaMap = {
-    gpay: 'skyvoyage@okaxis',
+  const vpas = {
+    gpay: 'skyvoyage.gpay@okaxis',
     phonepe: 'skyvoyage@ybl',
     paytm: 'skyvoyage@paytm',
     bhim: 'skyvoyage@upi',
   };
-  const vpa = vpaMap[app] || 'skyvoyage@hdfcbank';
-  const vpaDisplay = document.getElementById('active-vpa-display');
-  if (vpaDisplay) vpaDisplay.textContent = vpa;
+  const vpa = vpas[app] || 'skyvoyage@hdfcbank';
+  const display = document.getElementById('active-vpa-display');
+  if (display) display.textContent = vpa;
 
-  window.renderDynamicUpiCanvas(vpa, state.selectedSeat?.price || 3500);
-  showToast('UPI VPA Updated', `Active UPI provider: ${app.toUpperCase()} (${vpa})`, 'info');
+  const paxCount = state.passengerCount || 1;
+  const subtotal = (state.selectedSeats || []).reduce((sum, s) => sum + s.price, 0) || (state.selectedFlight.basePrice * paxCount);
+  const grand = Math.max(1200 * paxCount, subtotal + Math.round(subtotal * 0.12) - (state.comboFareApplied ? 1500 : 0));
+  window.renderDynamicUpiCanvas(vpa, grand);
 };
 
-// Canvas-Rendered Dynamic UPI QR Code Generator
 window.renderDynamicUpiCanvas = (vpa, amt) => {
   const canvas = document.getElementById('dynamic-upi-canvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  const size = 146;
-  ctx.clearRect(0, 0, size, size);
+  const w = canvas.width;
+  const h = canvas.height;
 
-  // Background
   ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, size, size);
+  ctx.fillRect(0, 0, w, h);
 
-  // Draw 2D QR Pattern simulation with authentic finder squares
   ctx.fillStyle = '#0F172A';
+  const drawFinder = (x, y, s) => {
+    ctx.fillRect(x, y, s, s);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(x + 5, y + 5, s - 10, s - 10);
+    ctx.fillStyle = '#0F172A';
+    ctx.fillRect(x + 9, y + 9, s - 18, s - 18);
+  };
 
-  // Corner 1 (Top Left)
-  ctx.fillRect(10, 10, 36, 36);
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(16, 16, 24, 24);
-  ctx.fillStyle = '#0F172A';
-  ctx.fillRect(22, 22, 12, 12);
+  drawFinder(10, 10, 34);
+  drawFinder(w - 44, 10, 34);
+  drawFinder(10, h - 44, 34);
 
-  // Corner 2 (Top Right)
-  ctx.fillRect(size - 46, 10, 36, 36);
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(size - 40, 16, 24, 24);
-  ctx.fillStyle = '#0F172A';
-  ctx.fillRect(size - 34, 22, 12, 12);
+  // Seeded pattern
+  let seed = 0;
+  for (let i = 0; i < vpa.length; i++) seed += vpa.charCodeAt(i);
+  seed += Math.floor(amt);
 
-  // Corner 3 (Bottom Left)
-  ctx.fillRect(10, size - 46, 36, 36);
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(16, size - 40, 24, 24);
-  ctx.fillStyle = '#0F172A';
-  ctx.fillRect(22, size - 34, 12, 12);
+  const gridSize = 14;
+  const stepSize = Math.floor((w - 20) / gridSize);
 
-  // Dynamic timing grid & randomized QR data modules based on VPA and amount
-  const seed = (vpa.length * 13 + Number(amt)) % 997;
-  const blockSize = 4;
-  for (let r = 12; r < size - 12; r += blockSize) {
-    for (let c = 12; c < size - 12; c += blockSize) {
-      if ((r < 50 && c < 50) || (r < 50 && c > size - 50) || (r > size - 50 && c < 50)) continue;
-      const pseudoVal = Math.sin(r * seed + c * 31);
-      if (pseudoVal > 0.1) {
-        ctx.fillRect(c, r, blockSize - 1, blockSize - 1);
+  for (let r = 0; r < gridSize; r++) {
+    for (let c = 0; c < gridSize; c++) {
+      if ((r < 5 && c < 5) || (r < 5 && c >= gridSize - 5) || (r >= gridSize - 5 && c < 5)) continue;
+      const pseudoVal = Math.sin(seed * (r * gridSize + c + 1)) * 10000;
+      if (pseudoVal - Math.floor(pseudoVal) > 0.48) {
+        ctx.fillRect(10 + c * stepSize, 10 + r * stepSize, stepSize - 1, stepSize - 1);
       }
     }
   }
 
-  // Draw center UPI emblem badge
+  // Logo in center
+  const cx = w / 2;
+  const cy = h / 2;
   ctx.fillStyle = '#0066FF';
   ctx.beginPath();
-  ctx.arc(size / 2, size / 2, 12, 0, Math.PI * 2);
+  ctx.arc(cx, cy, 14, 0, Math.PI * 2);
   ctx.fill();
+
   ctx.fillStyle = '#FFFFFF';
-  ctx.font = 'bold 10px sans-serif';
+  ctx.font = 'bold 12px Inter, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('₹', size / 2, size / 2);
+  ctx.fillText('⚡', cx, cy);
 };
 
 window.simulateUpiPayment = () => {
   const btn = document.getElementById('upi-simulate-btn');
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;display:inline-block"></span> Authorizing with Banking Gateway...';
+    btn.innerHTML = '<span class="spinner" style="width:16px;height:16px;display:inline-block"></span> Authenticating via NPCI UPI Switch...';
   }
-
   setTimeout(() => {
-    showToast('UPI Approved! ✅', 'Dynamic UPI QR scanned & authorized by mobile app', 'success');
+    showToast('UPI Approval Received ✓', 'Payment confirmed by bank switch. Committing DBMS ACID lock...', 'success');
     window.executeFinalBooking('upi');
-  }, 1000);
+  }, 1200);
 };
 
 window.selectNetBank = (code) => {
-  ['SBI', 'HDFC', 'ICICI', 'AXIS'].forEach(c => {
-    document.getElementById(`bank-card-${c.toLowerCase()}`)?.classList.toggle('active', c === code);
-    const radio = document.querySelector(`input[name="netbank"][value="${c}"]`);
-    if (radio) radio.checked = c === code;
-  });
-  const dropdown = document.getElementById('all-indian-banks-dropdown');
-  if (dropdown) dropdown.value = '';
+  document.querySelectorAll('.bank-radio-card').forEach(c => c.classList.remove('active'));
+  document.getElementById(`bank-card-${code.toLowerCase()}`)?.classList.add('active');
+  const radio = document.querySelector(`input[name="netbank"][value="${code}"]`);
+  if (radio) radio.checked = true;
+
+  const names = {
+    SBI: 'State Bank of India (SBI)',
+    HDFC: 'HDFC Bank',
+    ICICI: 'ICICI Bank',
+    Axis: 'Axis Bank',
+  };
   const status = document.getElementById('selected-bank-status');
-  if (status) status.innerHTML = `Selected: <strong>${code} NetBanking</strong> (Direct NPCI Gateway)`;
+  if (status) status.innerHTML = `Selected: <strong>${names[code] || code}</strong> (Direct Retail NetBanking)`;
 };
 
 window.selectOtherBank = (bankName) => {
   if (!bankName) return;
-  ['SBI', 'HDFC', 'ICICI', 'AXIS'].forEach(c => {
-    document.getElementById(`bank-card-${c.toLowerCase()}`)?.classList.remove('active');
-    const radio = document.querySelector(`input[name="netbank"][value="${c}"]`);
-    if (radio) radio.checked = false;
-  });
+  document.querySelectorAll('.bank-radio-card').forEach(c => c.classList.remove('active'));
   const status = document.getElementById('selected-bank-status');
   if (status) status.innerHTML = `Selected: <strong>${bankName}</strong> (NetBanking Gateway)`;
+  showToast('Bank Selected', `${bankName} routing configured`, 'info');
 };
 
-// Luhn Algorithm Card Validation & Brand Detection
 window.validateLuhnNumber = (numStr) => {
-  const clean = numStr.replace(/\D/g, '');
-  if (clean.length < 13 || clean.length > 19) return false;
+  const digits = numStr.replace(/\D/g, '');
+  if (digits.length < 13 || digits.length > 19) return false;
   let sum = 0;
-  let shouldDouble = false;
-  for (let i = clean.length - 1; i >= 0; i--) {
-    let digit = parseInt(clean.charAt(i), 10);
-    if (shouldDouble) {
+  let isEven = false;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let digit = parseInt(digits.charAt(i), 10);
+    if (isEven) {
       digit *= 2;
       if (digit > 9) digit -= 9;
     }
     sum += digit;
-    shouldDouble = !shouldDouble;
+    isEven = !isEven;
   }
-  return sum % 10 === 0;
+  return (sum % 10) === 0;
 };
 
 window.handleCardInput = (val) => {
-  const clean = val.replace(/\D/g, '');
   const brandTag = document.getElementById('card-brand-tag');
   const luhnTag = document.getElementById('card-luhn-tag');
+  const clean = val.replace(/\D/g, '');
 
-  // Detect card brand
-  let brand = '💳 Card';
-  if (/^4/.test(clean)) brand = 'Visa';
-  else if (/^(5[1-5]|222[1-9]|22[3-9]|2[3-6]|27[01]|2720)/.test(clean)) brand = 'Mastercard';
-  else if (/^(60|65|81|82|508)/.test(clean)) brand = 'RuPay';
-  else if (/^3[47]/.test(clean)) brand = 'American Express';
+  if (brandTag) {
+    if (clean.startsWith('4')) brandTag.textContent = '💳 Visa Verified';
+    else if (/^5[1-5]/.test(clean)) brandTag.textContent = '💳 Mastercard Verified';
+    else if (/^(60|65|81|82)/.test(clean)) brandTag.textContent = '💳 RuPay Verified';
+    else if (/^3[47]/.test(clean)) brandTag.textContent = '💳 American Express';
+    else brandTag.textContent = '💳 Card Detected';
+  }
 
-  if (brandTag) brandTag.textContent = brand;
-
-  // Validate Luhn Checksum
-  const isValid = window.validateLuhnNumber(clean);
   if (luhnTag) {
-    if (clean.length >= 13) {
-      luhnTag.className = `luhn-status-badge ${isValid ? 'valid' : 'invalid'}`;
-      luhnTag.textContent = isValid ? '✓ Valid Luhn Checksum' : '⚠️ Invalid Card Checksum';
-    } else {
-      luhnTag.className = 'luhn-status-badge invalid';
-      luhnTag.textContent = 'Enter card digits';
-    }
+    const isValid = window.validateLuhnNumber(clean);
+    luhnTag.className = `luhn-status-badge ${isValid ? 'valid' : 'invalid'}`;
+    luhnTag.textContent = isValid ? '✓ Luhn Checksum Verified' : '⚠️ Invalid Checksum';
   }
 };
 
@@ -2229,57 +2343,77 @@ window.selectWallet = (walletName) => {
   showToast(`${walletName} Ready`, 'Digital wallet authenticated for instant 1-click checkout', 'info');
 };
 
-// ── Atomic Final Booking Confirmation ──
+// ── Atomic Multi-Passenger Booking Confirmation ──
+
 window.executeFinalBooking = async (overrideMethod = null) => {
   const btn = document.getElementById('confirm-payment-btn');
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner" style="width:16px;height:16px;display:inline-block"></span> Committing ACID Mutex Lock...';
+    btn.innerHTML = '<span class="spinner" style="width:16px;height:16px;display:inline-block"></span> Committing ACID Mutex Locks...';
   }
-
-  // Save passenger to DB
-  await put('passengers', state.passengerData);
 
   const activeCat = document.querySelector('.payment-cat-btn.active')?.id?.replace('paycat-', '') || 'upi';
   const paymentMethod = overrideMethod || activeCat;
-
-  const rawAmount = state.selectedSeat?.price || state.selectedFlight.basePrice;
+  const paxCount = state.passengerCount || 1;
+  const baseFareTotal = state.selectedFlight.basePrice * paxCount;
+  const subtotal = (state.selectedSeats || []).reduce((sum, s) => sum + s.price, 0) || baseFareTotal;
+  const taxesAndSurcharges = Math.round(subtotal * 0.12);
   const comboDiscount = state.comboFareApplied ? 1500 : 0;
-  const finalAmount = Math.max(1200, rawAmount - comboDiscount);
+  const grandTotal = Math.max(1200 * paxCount, subtotal + taxesAndSurcharges - comboDiscount);
+  const perPaxAmount = Math.round(grandTotal / paxCount);
 
-  // Call createBooking with persistent session_hold_id to satisfy:
-  // CanConfirm = (seat.status = 'HELD' ∧ seat.session_hold_id = current_session) ∨ (seat.status = 'AVAILABLE')
-  const result = await createBooking({
-    flightId: state.selectedFlight.id,
-    seatNo: state.selectedSeat.seatNo,
-    passengerId: state.passengerData.id,
-    passengerName: `${state.passengerData.firstName} ${state.passengerData.lastName}`,
-    amount: finalAmount,
-    paymentMethod,
-    holdId: state.holdId,
-    session_hold_id: state.session_hold_id,
-  });
+  const bookingsCreated = [];
+  try {
+    for (let i = 0; i < paxCount; i++) {
+      const p = state.passengers[i] || state.passengerData;
+      const seat = state.selectedSeats[i] || state.selectedSeat || { seatNo: '12A', price: state.selectedFlight.basePrice, class: 'economy' };
 
-  if (result.success) {
-    showToast('Booking Confirmed! 🎉', `PNR: ${result.pnr}`, 'success');
+      // Save passenger in DB
+      await put('passengers', p);
+
+      // Create atomic booking
+      const res = await createBooking({
+        flightId: state.selectedFlight.id,
+        seatNo: seat.seatNo,
+        passengerId: p.id,
+        passengerName: p.fullName || `${p.firstName} ${p.lastName}`,
+        amount: perPaxAmount,
+        paymentMethod,
+        holdId: state.holdId,
+        session_hold_id: state.session_hold_id,
+      });
+
+      if (res.success) {
+        bookingsCreated.push({
+          ...res.booking,
+          pnr: res.pnr,
+          seatNo: seat.seatNo,
+          seatClass: seat.class,
+          passengerName: p.fullName || `${p.firstName} ${p.lastName}`,
+          passengerId: p.id,
+          mealPreference: p.mealPreference || 'Standard Non-Veg',
+          specialAssistance: p.specialAssistance || 'None',
+          idType: p.idType,
+          idNumber: p.idNumber,
+          airline: state.selectedFlight.airline,
+        });
+      } else {
+        throw new Error(res.error || `Failed booking for ${p.fullName}`);
+      }
+    }
+
     clearHoldTimer();
-
-    // Store confirmed state
-    state.lastConfirmedBooking = {
-      ...result.booking,
-      pnr: result.pnr,
-      airline: state.selectedFlight.airline,
-      idType: state.passengerData.idType,
-      idNumber: state.passengerData.idNumber,
-    };
+    state.confirmedBookings = bookingsCreated;
+    state.lastConfirmedBooking = bookingsCreated[0];
+    showToast('All Bookings Confirmed! 🎉', `${paxCount} passenger tickets issued under ACID transaction`, 'success');
 
     state.bookingStep = 4;
     window.goToBookingStep(4);
-  } else {
-    showToast('Booking Failed', result.error, 'error');
+  } catch (err) {
+    showToast('Booking Error', err.message, 'error');
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = `Confirm & Pay ₹${finalAmount.toLocaleString()} →`;
+      btn.innerHTML = `Confirm & Pay ₹${grandTotal.toLocaleString()} →`;
     }
   }
 };
@@ -2305,25 +2439,6 @@ function startHoldTimer(expiresAt) {
 
 function clearHoldTimer() {
   if (state.holdTimer) { clearInterval(state.holdTimer); state.holdTimer = null; }
-}
-
-function updateLogicGateDisplay(validation) {
-  const display = document.getElementById('logic-gate-display');
-  if (!display) return;
-  display.innerHTML = `
-    <div style="font-size:var(--font-size-xs);border-top:1px solid var(--color-border-light);padding-top:var(--space-3);margin-top:var(--space-3)">
-      <div class="font-semibold mb-2">🧮 Logic Gate (DMGT)</div>
-      ${Object.entries(validation.variables).map(([k, v]) => `
-        <div class="flex items-center gap-2 mb-1">
-          <span style="color:${v.value ? 'var(--color-success)' : 'var(--color-danger)'}">${v.value ? '✓' : '✗'}</span>
-          <span>${v.label}</span>
-        </div>
-      `).join('')}
-      <div class="mt-2 font-bold" style="color:${validation.canBook ? 'var(--color-success)' : 'var(--color-danger)'}">
-        Result: ${validation.canBook ? 'CAN BOOK ✓' : 'CANNOT BOOK ✗'}
-      </div>
-    </div>
-  `;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -2895,49 +3010,51 @@ async function renderAcademicPage() {
           </div>
         </div>
 
-        <!-- Visual Architecture Blueprint Pipeline -->
+        <!-- Interactive Visual Architecture Blueprint Pipeline -->
         <div class="pipeline-diagram">
-          <div class="pipeline-node active-pipe">
+          <div class="pipeline-node active-pipe pipeline-interactive" onclick="window.showPipelineDrawer('client')">
             <div class="pipeline-node-icon">🖥️</div>
             <div class="pipeline-node-title">1. Client UI</div>
             <div class="pipeline-node-sub">HTML5 / CSS3 / ES6</div>
           </div>
           <div class="pipeline-arrow">➔</div>
 
-          <div class="pipeline-node">
+          <div class="pipeline-node pipeline-interactive" onclick="window.showPipelineDrawer('dmgt')">
             <div class="pipeline-node-icon">⚡</div>
             <div class="pipeline-node-title">2. DMGT Logic Gate</div>
             <div class="pipeline-node-sub">CanBook = (P∧Q)∧(R∨S)</div>
           </div>
           <div class="pipeline-arrow">➔</div>
 
-          <div class="pipeline-node">
+          <div class="pipeline-node pipeline-interactive" onclick="window.showPipelineDrawer('adsa')">
             <div class="pipeline-node-icon">🌳</div>
             <div class="pipeline-node-title">3. ADSA B-Tree</div>
             <div class="pipeline-node-sub">O(log n) PNR Index</div>
           </div>
           <div class="pipeline-arrow">➔</div>
 
-          <div class="pipeline-node">
+          <div class="pipeline-node pipeline-interactive" onclick="window.showPipelineDrawer('dbms')">
             <div class="pipeline-node-icon">🔒</div>
             <div class="pipeline-node-title">4. DBMS ACID Lock</div>
             <div class="pipeline-node-sub">Pessimistic Mutex</div>
           </div>
           <div class="pipeline-arrow">➔</div>
 
-          <div class="pipeline-node">
+          <div class="pipeline-node pipeline-interactive" onclick="window.showPipelineDrawer('python')">
             <div class="pipeline-node-icon">🧠</div>
             <div class="pipeline-node-title">5. Python ML</div>
             <div class="pipeline-node-sub">Sigmoid Overbooking</div>
           </div>
           <div class="pipeline-arrow">➔</div>
 
-          <div class="pipeline-node">
+          <div class="pipeline-node pipeline-interactive" onclick="window.showPipelineDrawer('heap')">
             <div class="pipeline-node-icon">📊</div>
             <div class="pipeline-node-title">6. ADSA Max-Heap</div>
             <div class="pipeline-node-sub">Standby Priority Queue</div>
           </div>
         </div>
+        <!-- Pipeline Drawer Tooltip -->
+        <div id="pipeline-drawer" class="pipeline-drawer" style="display:none"></div>
       </div>
 
       <!-- SECTION B: ANIMATED END-TO-END PASSENGER JOURNEY WORKFLOW -->
@@ -3062,6 +3179,81 @@ async function renderAcademicPage() {
   `;
 }
 
+
+// ── Interactive Pipeline Node Drawer ──
+const PIPELINE_NODE_DATA = {
+  client: {
+    title: '🖥️ Client UI Layer',
+    flow: 'User Input → Event Handlers → DOM Render → Hash Router',
+    payload: '{ action: "searchFlights", origin: "VTZ", dest: "HYD", date: "2026-10-15" }',
+    timing: 'DOM Event → Render: ~12ms | IndexedDB Query: ~8ms',
+    tech: 'Semantic HTML5 forms, CSS3 Design Tokens, ES6 Modules (<script type="module">)'
+  },
+  dmgt: {
+    title: '⚡ DMGT Propositional Logic Gate',
+    flow: 'Passenger Form → Boolean Validators → CanBook = (P ∧ Q) ∧ (R ∨ S)',
+    payload: '{ P: true, Q: true, R: true, S: false, result: true }',
+    timing: 'Logic Evaluation: ~0.02ms | Truth Table: 16 rows pre-computed',
+    tech: 'Propositional Calculus (Unit 1), Set Theory A = U ∖ (B ∪ H) (Unit 2)'
+  },
+  adsa: {
+    title: '🌳 ADSA B-Tree PNR Index',
+    flow: 'PNR Generated → BTree.insert(key, record) → Node Split if Full',
+    payload: '{ key: "SK-894210", value: { flightId: "AI442", seatNo: "12B", status: "confirmed" } }',
+    timing: 'Insert: O(log₃ n) = ~2 comparisons for 1000 records | Search: O(log₃ n)',
+    tech: 'Multi-Way Balanced B-Tree (Order t=3), Level-Order Traversal'
+  },
+  dbms: {
+    title: '🔒 DBMS ACID Concurrency Lock',
+    flow: 'SELECT...FOR UPDATE → Row Lock → Status Update → COMMIT/ROLLBACK',
+    payload: '{ mutex: "seat:AI442:12B", state: "LOCKED", ttl: 600, holder: "sess_abc123" }',
+    timing: 'Lock Acquire: ~1ms | Atomic Commit: ~3ms | TTL Expiry: 600s',
+    tech: 'Pessimistic 2PL Locking, UNIQUE(flight_id, seat_no), IndexedDB Transactions'
+  },
+  python: {
+    title: '🧠 Python ML Overbooking Engine',
+    flow: 'Feature Vector → Sigmoid σ(z) → P(no-show) → min E[Cost(b)]',
+    payload: '{ features: [14, 1, 0.12, 0.85], z: -2.15, probability: 0.104, optimalBuffer: 3 }',
+    timing: 'Sigmoid Calc: ~0.01ms | Cost Curve (10 levels): ~0.5ms',
+    tech: 'Logistic Regression, Binomial Expected Cost Minimization'
+  },
+  heap: {
+    title: '📊 ADSA Max-Heap Priority Queue',
+    flow: 'Cancel Event → ExtractMax() → Auto-Promote Top Waitlisted Passenger',
+    payload: '{ promoted: "Rajesh S.", tier: "gold", priority: 399985, newPNR: "SK-501829" }',
+    timing: 'ExtractMax: O(1) peek, O(log n) restore | Insert: O(log n)',
+    tech: 'Binary Max-Heap with Priority = (TierWeight × 10⁵) − Timestamp'
+  }
+};
+
+window.showPipelineDrawer = (nodeKey, el = null) => {
+  const data = PIPELINE_NODE_DATA[nodeKey];
+  if (!data) return;
+
+  const drawer = document.getElementById('pipeline-drawer');
+  if (!drawer) return;
+
+  // Pulse animation on clicked node
+  document.querySelectorAll('.pipeline-node').forEach(n => n.classList.remove('pulse-active'));
+  event.currentTarget.classList.add('pulse-active');
+
+  drawer.style.display = 'block';
+  drawer.innerHTML = `
+    <div class="pipeline-drawer-content">
+      <div class="pipeline-drawer-header">
+        <strong>${data.title}</strong>
+        <button class="btn btn-ghost btn-xs" onclick="document.getElementById('pipeline-drawer').style.display='none'">✕</button>
+      </div>
+      <div class="pipeline-drawer-body">
+        <div class="pipeline-drawer-row"><span class="pipeline-drawer-label">Data Flow:</span><span>${data.flow}</span></div>
+        <div class="pipeline-drawer-row"><span class="pipeline-drawer-label">JSON Payload:</span><code class="text-xs">${data.payload}</code></div>
+        <div class="pipeline-drawer-row"><span class="pipeline-drawer-label">Execution Timing:</span><span>${data.timing}</span></div>
+        <div class="pipeline-drawer-row"><span class="pipeline-drawer-label">Technology:</span><span>${data.tech}</span></div>
+      </div>
+    </div>
+  `;
+};
+
 function initAcademicPage() {
   // Initialize journey simulation to step 1
   window.setAcademicJourneyStep(1);
@@ -3092,7 +3284,7 @@ window.openConceptModal = (subjectKey, tabKey = null) => {
   if (!mount) return;
 
   mount.innerHTML = `
-    <div class="concept-modal-backdrop" id="concept-modal-backdrop" onclick="if(event.target===this) window.closeConceptModal()">
+    <div class="concept-modal-backdrop academic-modal-overlay" id="concept-modal-backdrop" onclick="if(event.target===this) window.closeConceptModal()">
       <div class="concept-modal-dialog">
         <!-- Modal Header -->
         <div class="concept-modal-header">
@@ -4087,7 +4279,8 @@ window.runOverbookingCalcModal = () => {
 // ══════════════════════════════════════════════════════════
 
 const routes = {
-  'home': { render: renderHomePage, init: initHomePage },
+  'home': { render: renderSearchPage, init: initSearchPage },
+  'landing': { render: renderHomePage, init: initHomePage },
   'search': { render: renderSearchPage, init: initSearchPage },
   'seats': { render: (id) => renderSeatPage(id), init: (id) => initSeatPage(id) },
   'booking': { render: renderBookingPage },
@@ -4098,7 +4291,7 @@ const routes = {
 async function navigateTo(page, params) {
   state.currentPage = page;
   const route = routes[page];
-  if (!route) { navigateTo('home'); return; }
+  if (!route) { navigateTo('search'); return; }
 
   const mainContent = document.getElementById('main-content');
   if (!mainContent) return;
@@ -4115,6 +4308,9 @@ async function navigateTo(page, params) {
     mainContent.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
     mainContent.style.opacity = '1';
     mainContent.style.transform = 'translateY(0)';
+    setTimeout(() => {
+      if (mainContent) mainContent.style.transform = 'none';
+    }, 350);
   });
 
   // Initialize page
@@ -4132,9 +4328,10 @@ async function navigateTo(page, params) {
 }
 
 function handleHashChange() {
-  const hash = window.location.hash.slice(1) || '/home';
+  const hash = window.location.hash.slice(1) || '/search';
   const parts = hash.split('/').filter(Boolean);
-  const page = parts[0] || 'home';
+  let page = parts[0] || 'search';
+  if (page === 'home') page = 'search';
   const param = parts[1] || null;
   navigateTo(page, param);
 }
@@ -4149,6 +4346,7 @@ async function initApp() {
     ${renderNavbar()}
     <main class="main-content" id="main-content"></main>
     <div class="toast-container" id="toast-container"></div>
+    <div id="concept-modal-mount"></div>
   `;
 
   // Initialize database
